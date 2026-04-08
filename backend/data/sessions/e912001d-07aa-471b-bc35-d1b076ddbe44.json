@@ -1,0 +1,40 @@
+{
+  "id": "e912001d-07aa-471b-bc35-d1b076ddbe44",
+  "projectId": "ebdf595c-654f-4159-ab40-8ef3e6f756ce",
+  "sessionId": "e912001d-07aa-471b-bc35-d1b076ddbe44",
+  "messages": [
+    {
+      "id": "user-1775640971855",
+      "role": "user",
+      "content": "slll",
+      "timestamp": "2026-04-08T09:36:11.855Z"
+    },
+    {
+      "id": "1775640977081",
+      "role": "assistant",
+      "content": "I’m not sure what you want me to do with `slll`.\n\nSend the task or paste the command/code you meant.",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "I’m not sure what you want me to do with `slll`.\n\nSend the task or paste the command/code you meant."
+        }
+      ],
+      "timestamp": "2026-04-08T09:36:20.300Z",
+      "model": "gpt-5.4",
+      "tokens": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "id": "result-1775640981517",
+      "role": "system",
+      "content": "Completed: 6.4s · $0.1197",
+      "timestamp": "2026-04-08T09:36:21.517Z",
+      "cost": 0.119745
+    }
+  ],
+  "createdAt": "2026-04-08T09:23:10.497Z",
+  "updatedAt": "2026-04-08T09:36:21.517Z",
+  "isActive": true
+}

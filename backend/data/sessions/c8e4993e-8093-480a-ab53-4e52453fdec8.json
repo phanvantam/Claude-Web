@@ -1,0 +1,40 @@
+{
+  "id": "c8e4993e-8093-480a-ab53-4e52453fdec8",
+  "projectId": "ebdf595c-654f-4159-ab40-8ef3e6f756ce",
+  "sessionId": "c8e4993e-8093-480a-ab53-4e52453fdec8",
+  "messages": [
+    {
+      "id": "user-1775642114063",
+      "role": "user",
+      "content": "ngu thế",
+      "timestamp": "2026-04-08T09:55:14.063Z"
+    },
+    {
+      "id": "1775642119641",
+      "role": "assistant",
+      "content": "Mình vẫn ở đây để giúp.\n\nNếu mình làm sai chỗ nào, nói thẳng phần cần sửa và mình sẽ chỉnh ngay.",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "Mình vẫn ở đây để giúp.\n\nNếu mình làm sai chỗ nào, nói thẳng phần cần sửa và mình sẽ chỉnh ngay."
+        }
+      ],
+      "timestamp": "2026-04-08T09:55:28.631Z",
+      "model": "gpt-5.4",
+      "tokens": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "id": "result-1775642129933",
+      "role": "system",
+      "content": "Completed: 13.1s · $0.1206",
+      "timestamp": "2026-04-08T09:55:29.933Z",
+      "cost": 0.12062500000000001
+    }
+  ],
+  "createdAt": "2026-04-08T09:28:11.163Z",
+  "updatedAt": "2026-04-08T09:55:29.934Z",
+  "isActive": true
+}
