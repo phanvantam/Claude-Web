@@ -1,0 +1,146 @@
+export interface Project {
+    id: string;
+    name: string;
+    path: string;
+    description?: string;
+    createdAt: string;
+    updatedAt: string;
+    activeSessionId?: string | null;
+}
+export interface ClaudeStreamMessage {
+    type: string;
+    subtype?: string;
+    session_id?: string;
+    [key: string]: unknown;
+}
+export interface ClaudeContentBlock {
+    type: 'text' | 'tool_use' | 'tool_result';
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: Record<string, unknown>;
+    content?: string;
+    is_error?: boolean;
+}
+export interface ClaudeAssistantMessage {
+    type: 'assistant';
+    message: {
+        id: string;
+        role: 'assistant';
+        content: ClaudeContentBlock[];
+        model: string;
+        stop_reason: string;
+        usage: {
+            input_tokens: number;
+            output_tokens: number;
+        };
+    };
+    session_id: string;
+}
+export interface ClaudeResultMessage {
+    type: 'result';
+    subtype: 'success' | 'error';
+    cost_usd: number;
+    duration_ms: number;
+    duration_api_ms: number;
+    is_error: boolean;
+    num_turns: number;
+    session_id: string;
+    total_cost_usd: number;
+}
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type ContentBlock = {
+    type: 'text';
+    text: string;
+} | {
+    type: 'tool_use';
+    tool: ToolCall;
+};
+export interface ChatMessage {
+    id: string;
+    role: MessageRole;
+    content: string;
+    blocks?: ContentBlock[];
+    toolCalls?: ToolCall[];
+    timestamp: string;
+    isStreaming?: boolean;
+    cost?: number;
+    model?: string;
+    tokens?: {
+        input: number;
+        output: number;
+    };
+}
+export interface ToolCall {
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+    result?: string;
+    isError?: boolean;
+}
+export interface ChatSession {
+    id: string;
+    projectId: string;
+    sessionId: string;
+    name?: string;
+    messages: ChatMessage[];
+    createdAt: string;
+    updatedAt: string;
+    isActive: boolean;
+    totalCost?: number;
+}
+export interface GlobalConfig {
+    model?: string;
+    maxBudgetUsd?: number;
+    permissionMode?: string;
+    systemPrompt?: string;
+    customArgs?: string[];
+    theme?: 'light' | 'dark';
+}
+export interface ServerToClientEvents {
+    'chat:message': (data: {
+        sessionId: string;
+        message: ChatMessage;
+    }) => void;
+    'chat:stream': (data: {
+        sessionId: string;
+        content: string;
+        messageId: string;
+    }) => void;
+    'chat:stream:end': (data: {
+        sessionId: string;
+        messageId: string;
+        finalMessage: ChatMessage;
+    }) => void;
+    'chat:error': (data: {
+        sessionId: string;
+        error: string;
+    }) => void;
+    'chat:status': (data: {
+        sessionId: string;
+        status: 'idle' | 'thinking' | 'tool_use';
+    }) => void;
+    'session:started': (data: {
+        sessionId: string;
+    }) => void;
+    'session:ended': (data: {
+        sessionId: string;
+    }) => void;
+}
+export interface ClientToServerEvents {
+    'chat:send': (data: {
+        sessionId: string;
+        message: string;
+    }) => void;
+    'chat:abort': (data: {
+        sessionId: string;
+    }) => void;
+    'session:start': (data: {
+        projectId: string;
+        sessionId?: string;
+    }) => void;
+    'session:stop': (data: {
+        sessionId: string;
+    }) => void;
+}
+//# sourceMappingURL=index.d.ts.map

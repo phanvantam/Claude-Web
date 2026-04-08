@@ -190,6 +190,12 @@ class ClaudeService extends EventEmitter {
         claudeProc.buffer = '';
       }
 
+      // Finalize any pending partial message that wasn't committed yet
+      if (claudeProc.lastPartialMessage) {
+        console.log(`[Claude] Finalizing pending partial message on close for ${sessionId}`);
+        this.finalizeAssistantMessage(sessionId, claudeProc.lastPartialMessage);
+      }
+
       if (claudeProc.process === proc) {
           claudeProc.process = null;
       }
@@ -270,15 +276,16 @@ class ClaudeService extends EventEmitter {
     // Prevent double-finalize for the same message
     if (claudeProc.messages.find(m => m.id === chatMsg.id)) return;
 
-    claudeProc.messages.push(chatMsg);
-    claudeProc.isProcessing = false;
-    // Keep messageStopReceived = true so late 'assistant' events are
-    // recognized as duplicates rather than new partial messages.
-    // It will be reset by 'message_start' of the next turn.
-    claudeProc.lastPartialMessage = null;
-    this.syncSessionToFile(sessionId);
-    this.emit('message', { sessionId, message: chatMsg });
-    this.emit('status', { sessionId, status: 'idle' });
+    try {
+      claudeProc.messages.push(chatMsg);
+      claudeProc.isProcessing = false;
+      claudeProc.lastPartialMessage = null;
+      this.syncSessionToFile(sessionId);
+      this.emit('message', { sessionId, message: chatMsg });
+    } catch (err) {
+      console.error(`[Claude] Error in finalizeAssistantMessage for ${sessionId}:`, err);
+    }
+    // We NO LONGER emit status: idle here because we want to wait for the 'result' event
   }
 
   /**
@@ -288,7 +295,6 @@ class ClaudeService extends EventEmitter {
     const args: string[] = [
       '--output-format', 'stream-json',
       '--verbose',
-      '--include-partial-messages',
     ];
 
     if (resumeSessionId) {
@@ -329,20 +335,38 @@ class ClaudeService extends EventEmitter {
 
     // Accumulate buffer and process complete JSON lines
     claudeProc.buffer += rawData;
-    const lines = claudeProc.buffer.split('\n');
-    claudeProc.buffer = lines.pop() || ''; // Keep incomplete line in buffer
+    
+    // Process all complete lines
+    if (claudeProc.buffer.includes('\n')) {
+      const lines = claudeProc.buffer.split('\n');
+      claudeProc.buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      try {
-        const parsed = JSON.parse(trimmed);
-        this.processStreamEvent(sessionId, parsed);
-      } catch (e) {
-        // Not valid JSON, might be plain text output
-        console.warn(`[Claude] Non-JSON output: ${trimmed.substring(0, 200)}`);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        this.tryParseAndProcess(sessionId, trimmed);
       }
+    }
+
+    // Proactive check: if the remaining buffer looks like a complete JSON object
+    // (starts with '{' and ends with '}'), try to parse it now instead of waiting for a newline.
+    // This is common for the final 'result' event from the CLI.
+    const trimmedBuffer = claudeProc.buffer.trim();
+    if (trimmedBuffer.startsWith('{') && trimmedBuffer.endsWith('}')) {
+      if (this.tryParseAndProcess(sessionId, trimmedBuffer)) {
+        claudeProc.buffer = ''; // Success, clear it
+      }
+    }
+  }
+
+  private tryParseAndProcess(sessionId: string, jsonStr: string): boolean {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      this.processStreamEvent(sessionId, parsed);
+      return true;
+    } catch (e) {
+      // Not valid JSON, might be part of an ongoing object or plain text
+      return false;
     }
   }
 
@@ -371,15 +395,9 @@ class ClaudeService extends EventEmitter {
         const content = message.content as ClaudeContentBlock[];
         const chatMsg = this.buildChatMessage(sessionId, content, message);
 
-        if (claudeProc.messageStopReceived) {
-          // FINAL assistant message — after message_stop
-          this.finalizeAssistantMessage(sessionId, chatMsg);
-        } else {
-          // PARTIAL assistant message (from --include-partial-messages)
-          // Save it so we can finalize later if no final event arrives
-          claudeProc.lastPartialMessage = chatMsg;
-          this.emit('stream:partial', { sessionId, blocks: chatMsg.blocks || [] });
-        }
+        // Since we removed --include-partial-messages, this is usually a complete block or message
+        // We treat it as the final assistant message for this turn
+        this.finalizeAssistantMessage(sessionId, chatMsg);
         break;
       }
 
@@ -484,6 +502,11 @@ class ClaudeService extends EventEmitter {
           }
           this.emit('result', { sessionId, result: finalMsg, data: result });
         }
+        
+        // Finalize the turn - hide loading now that we have the result
+        const cp = this.processes.get(sessionId);
+        if (cp) cp.isProcessing = false;
+        this.emit('status', { sessionId, status: 'idle' });
         break;
       }
 

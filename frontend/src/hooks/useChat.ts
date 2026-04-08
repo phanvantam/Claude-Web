@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { socketService } from '../services/socket';
-import type { ChatMessage, ContentBlock, ToolCall } from '../types';
+import type { ChatMessage, ContentBlock } from '../types';
 
 interface UseChatReturn {
   messages: ChatMessage[];
@@ -25,34 +25,62 @@ export function useChat(): UseChatReturn {
   const [status, setStatus] = useState<'idle' | 'thinking' | 'tool_use'>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const streamingRef = useRef('');
+  // Keep a ref so reconnect handler always has the latest sessionId
+  const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const socket = socketService.connect();
 
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
+    socket.on('connect', () => {
+      console.log('[useChat] Socket connected');
+      setIsConnected(true);
+
+      // Re-attach to session after reconnect so we rejoin the room
+      const sid = sessionIdRef.current;
+      if (sid) {
+        console.log(`[useChat] Reconnected — re-attaching session ${sid}`);
+        socket.emit('session:attach', { sessionId: sid });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[useChat] Socket disconnected');
+      setIsConnected(false);
+    });
 
     // Session started or attached
     socket.on('session:started', (data: { sessionId: string; state?: { messages: ChatMessage[]; isProcessing: boolean } }) => {
-      console.log(`[useChat] session:started received ID: ${data.sessionId}, message count: ${data.state?.messages?.length || 0}`);
+      console.log(`[useChat] session:started ID=${data.sessionId}, msgs=${data.state?.messages?.length || 0}, processing=${data.state?.isProcessing}`);
       setSessionId(data.sessionId);
+      sessionIdRef.current = data.sessionId;
       if (data.state) {
-        // Deduplicate messages by ID just in case
         const uniqueMessages = Array.from(
           new Map((data.state.messages || []).map(m => [m.id, m])).values()
         );
         setMessages(uniqueMessages);
-        setStatus(data.state.isProcessing ? 'thinking' : 'idle');
+        if (!data.state.isProcessing) {
+          // If not processing, force idle and clear any stale streaming
+          setStatus('idle');
+          streamingRef.current = '';
+          setStreamingContent('');
+          setStreamingBlocks([]);
+        } else {
+          setStatus('thinking');
+        }
       }
     });
 
     // New chat message (user or assistant) — final complete message
     socket.on('chat:message', (data: { sessionId: string; message: ChatMessage }) => {
-      // Clear streaming state
-      streamingRef.current = '';
-      setStreamingContent('');
-      setStreamingBlocks([]);
-      setStatus('idle');
+      console.log(`[useChat] New message received: ${data.message.role}`);
+      
+      // Clear streaming state when any non-user message arrives
+      // Note: We NO LONGER setStatus('idle') here, we wait for chat:status
+      if (data.message.role !== 'user') {
+        setStreamingBlocks([]);
+        setStreamingContent('');
+        streamingRef.current = '';
+      }
 
       setMessages((prev) => {
         // Prevent adding the same message ID twice
@@ -61,56 +89,29 @@ export function useChat(): UseChatReturn {
       });
     });
 
-    // Streaming text delta — append to current text
-    socket.on('chat:stream', (data: { sessionId: string; content: string }) => {
-      streamingRef.current += data.content;
-      setStreamingContent(streamingRef.current);
-
-      // Also update streamingBlocks: append to last text block or create new
-      setStreamingBlocks((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.type === 'text') {
-          const updated = [...prev];
-          updated[updated.length - 1] = { type: 'text', text: last.text + data.content };
-          return updated;
-        }
-        return [...prev, { type: 'text', text: data.content }];
-      });
-    });
-
-    // Streaming tool start — a new tool_use block appeared
-    socket.on('chat:stream:tool', (data: { sessionId: string; tool: ToolCall }) => {
-      setStreamingBlocks((prev) => [...prev, { type: 'tool_use', tool: data.tool }]);
-    });
-
-    // Partial assistant message — full blocks update from --include-partial-messages
-    // Replace streaming blocks wholesale with the authoritative partial state
-    socket.on('chat:stream:partial', (data: { sessionId: string; blocks: ContentBlock[] }) => {
-      setStreamingBlocks(data.blocks);
-    });
+    // We keep these empty or simplified since streaming is disabled on backend
+    socket.on('chat:stream', () => {});
+    socket.on('chat:stream:tool', () => {});
+    socket.on('chat:stream:partial', () => {});
 
     // Status updates
     socket.on('chat:status', (data: { sessionId: string; status: 'idle' | 'thinking' | 'tool_use' }) => {
+      console.log(`[useChat] Status changed to: ${data.status}`);
       setStatus(data.status);
-      if (data.status === 'thinking') {
-        // Reset streaming for new message
-        streamingRef.current = '';
-        setStreamingContent('');
+      if (data.status === 'idle') {
         setStreamingBlocks([]);
-      } else if (data.status === 'idle') {
-        // Ensure no stale streaming UI remains after turn completion
-        streamingRef.current = '';
         setStreamingContent('');
-        setStreamingBlocks([]);
+        streamingRef.current = '';
       }
     });
 
     // Errors
     socket.on('chat:error', (data: { sessionId: string; error: string }) => {
+      console.error(`[useChat] Error: ${data.error}`);
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'system',
-        content: `❌ Error: ${data.error}`,
+        content: `❌ Lỗi: ${data.error}`,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -119,7 +120,9 @@ export function useChat(): UseChatReturn {
 
     // Session ended
     socket.on('session:ended', () => {
+      console.log('[useChat] Session ended');
       setSessionId(null);
+      sessionIdRef.current = null;
       setStatus('idle');
     });
 
@@ -139,40 +142,40 @@ export function useChat(): UseChatReturn {
 
   const startSession = useCallback((projectId: string, existingSessionId?: string) => {
     const socket = socketService.getSocket();
-    // Clear previous session state
     setMessages([]);
     setStreamingContent('');
     setStreamingBlocks([]);
     streamingRef.current = '';
     setStatus('idle');
     setSessionId(null);
+    sessionIdRef.current = null;
 
-    // Always use session:start — backend handles both new and resume
     socket?.emit('session:start', { projectId, sessionId: existingSessionId });
   }, []);
 
   const sendMessage = useCallback((text: string) => {
-    if (!sessionId) return;
+    if (!sessionIdRef.current) return;
     const socket = socketService.getSocket();
-    socket?.emit('chat:send', { sessionId, message: text });
-  }, [sessionId]);
+    socket?.emit('chat:send', { sessionId: sessionIdRef.current, message: text });
+  }, []);
 
   const abortGeneration = useCallback(() => {
-    if (!sessionId) return;
+    if (!sessionIdRef.current) return;
     const socket = socketService.getSocket();
-    socket?.emit('chat:abort', { sessionId });
+    socket?.emit('chat:abort', { sessionId: sessionIdRef.current });
     setStatus('idle');
     setStreamingBlocks([]);
     setStreamingContent('');
     streamingRef.current = '';
-  }, [sessionId]);
+  }, []);
 
   const stopSession = useCallback(() => {
-    if (!sessionId) return;
+    if (!sessionIdRef.current) return;
     const socket = socketService.getSocket();
-    socket?.emit('session:stop', { sessionId });
+    socket?.emit('session:stop', { sessionId: sessionIdRef.current });
     setSessionId(null);
-  }, [sessionId]);
+    sessionIdRef.current = null;
+  }, []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

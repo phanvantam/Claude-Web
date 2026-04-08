@@ -1,0 +1,527 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.claudeService = void 0;
+const child_process_1 = require("child_process");
+const uuid_1 = require("uuid");
+const events_1 = require("events");
+const config_1 = require("./config");
+const project_1 = require("./project");
+const session_1 = require("./session");
+class ClaudeService extends events_1.EventEmitter {
+    processes = new Map();
+    /**
+     * Get the state of an active session
+     */
+    getSessionState(sessionId) {
+        let claudeProc = this.processes.get(sessionId);
+        if (!claudeProc) {
+            const saved = (0, session_1.getSession)(sessionId);
+            if (saved) {
+                return {
+                    messages: saved.messages,
+                    isProcessing: false,
+                };
+            }
+            return null;
+        }
+        return {
+            messages: claudeProc.messages,
+            isProcessing: claudeProc.isProcessing,
+        };
+    }
+    syncSessionToFile(sessionId) {
+        const claudeProc = this.processes.get(sessionId);
+        if (!claudeProc)
+            return;
+        const saved = (0, session_1.getSession)(sessionId);
+        if (saved) {
+            saved.messages = claudeProc.messages;
+            (0, session_1.saveSession)(saved);
+        }
+    }
+    /**
+     * Start a new Claude CLI session for a project.
+     * Uses --print --input-format stream-json --output-format stream-json
+     */
+    async startSession(projectId, existingSessionId) {
+        console.log(`[ClaudeService] startSession: projectId=${projectId}, existingSessionId=${existingSessionId}`);
+        const project = (0, project_1.getProject)(projectId);
+        if (!project)
+            throw new Error(`Project not found: ${projectId}`);
+        const sessionId = existingSessionId || (0, uuid_1.v4)();
+        console.log(`[ClaudeService] Using sessionId=${sessionId}`);
+        // If session already exists in memory, return it
+        if (this.processes.has(sessionId)) {
+            console.log(`[ClaudeService] Session ${sessionId} found in memory`);
+            return sessionId;
+        }
+        const savedSession = (0, session_1.getSession)(sessionId);
+        if (savedSession) {
+            console.log(`[ClaudeService] Session ${sessionId} loaded from disk with ${savedSession.messages.length} messages`);
+        }
+        else {
+            console.log(`[ClaudeService] Session ${sessionId} not found on disk, creating new`);
+        }
+        const claudeProc = {
+            process: null,
+            sessionId,
+            projectId,
+            isProcessing: false,
+            buffer: '',
+            messages: savedSession ? savedSession.messages : [],
+            messageStopReceived: false,
+            lastPartialMessage: null,
+        };
+        if (!savedSession) {
+            const newSession = {
+                id: sessionId,
+                projectId,
+                sessionId,
+                messages: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                isActive: true,
+            };
+            (0, session_1.saveSession)(newSession);
+        }
+        // Update project's active session
+        if (project.activeSessionId !== sessionId) {
+            try {
+                const projectService = require('./project');
+                projectService.updateProject(projectId, { activeSessionId: sessionId });
+                console.log(`[ClaudeService] Updated project ${projectId} activeSessionId to ${sessionId}`);
+            }
+            catch (err) {
+                console.error('[ClaudeService] Failed to update project activeSessionId:', err);
+            }
+        }
+        this.processes.set(sessionId, claudeProc);
+        // Remove duplicate emit — let index.ts handle it with state
+        // this.emit('session:started', { sessionId }); 
+        return sessionId;
+    }
+    /**
+     * Send a user message to an active Claude session
+     */
+    sendMessage(sessionId, message) {
+        const claudeProc = this.processes.get(sessionId);
+        if (!claudeProc) {
+            throw new Error(`No active session: ${sessionId}`);
+        }
+        if (claudeProc.isProcessing) {
+            throw new Error(`Session ${sessionId} is already processing`);
+        }
+        claudeProc.isProcessing = true;
+        this.emit('status', { sessionId, status: 'thinking' });
+        // Ensure user message is saved to internal state
+        const chatMsg = {
+            id: `user-${Date.now()}`,
+            role: 'user',
+            content: message,
+            timestamp: new Date().toISOString(),
+        };
+        claudeProc.messages.push(chatMsg);
+        this.syncSessionToFile(sessionId);
+        const project = (0, project_1.getProject)(claudeProc.projectId);
+        const config = (0, config_1.getConfig)();
+        // We only use --session-id for the very first message
+        // If we have more than 1 message (the one we just added), we use --resume
+        // Note: Since we pushed the user message above, first message means length = 1
+        const isFirstMessage = claudeProc.messages.length === 1;
+        const args = this.buildArgs(sessionId, config, !isFirstMessage ? sessionId : undefined);
+        console.log(`[Claude] Executing turn for ${sessionId}`);
+        const proc = (0, child_process_1.spawn)('claude', args, {
+            cwd: project.path,
+            env: { ...process.env },
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        claudeProc.process = proc;
+        claudeProc.buffer = '';
+        proc.stdout.on('data', (data) => {
+            const raw = data.toString();
+            console.log(`[Claude stdout] received ${raw.length} chars, has newline: ${raw.includes('\n')}`);
+            this.handleOutput(sessionId, raw);
+        });
+        proc.stderr.on('data', (data) => {
+            console.error(`[Claude stderr][${sessionId}]`, data.toString());
+            this.emit('error', { sessionId, error: data.toString() });
+        });
+        proc.on('close', (code) => {
+            console.log(`[Claude] Turn ${sessionId} exited with code ${code}`);
+            // Flush any remaining buffer without a newline
+            if (claudeProc.buffer.trim()) {
+                try {
+                    const parsed = JSON.parse(claudeProc.buffer.trim());
+                    this.processStreamEvent(sessionId, parsed);
+                }
+                catch (e) {
+                    console.warn(`[Claude] Non-JSON trailing output: ${claudeProc.buffer.substring(0, 200)}`);
+                }
+                claudeProc.buffer = '';
+            }
+            // Finalize any pending partial message that wasn't committed yet
+            if (claudeProc.lastPartialMessage) {
+                console.log(`[Claude] Finalizing pending partial message on close for ${sessionId}`);
+                this.finalizeAssistantMessage(sessionId, claudeProc.lastPartialMessage);
+            }
+            if (claudeProc.process === proc) {
+                claudeProc.process = null;
+            }
+            claudeProc.isProcessing = false;
+            this.emit('status', { sessionId, status: 'idle' });
+        });
+        proc.on('error', (err) => {
+            console.error(`[Claude] Process error for ${sessionId}:`, err);
+            this.emit('error', { sessionId, error: err.message });
+            if (claudeProc.process === proc) {
+                claudeProc.process = null;
+            }
+            claudeProc.isProcessing = false;
+            this.emit('status', { sessionId, status: 'idle' });
+        });
+        proc.stdin.write(message, 'utf-8');
+        proc.stdin.end();
+    }
+    /**
+     * Abort the current request in a session
+     */
+    abortSession(sessionId) {
+        const claudeProc = this.processes.get(sessionId);
+        if (claudeProc && claudeProc.process) {
+            claudeProc.process.kill('SIGINT');
+            claudeProc.process = null;
+        }
+    }
+    /**
+     * Stop and cleanup a session
+     */
+    stopSession(sessionId) {
+        const claudeProc = this.processes.get(sessionId);
+        if (claudeProc) {
+            if (claudeProc.process)
+                claudeProc.process.kill('SIGTERM');
+            this.processes.delete(sessionId);
+            this.emit('session:ended', { sessionId });
+        }
+    }
+    /**
+     * Check if a session is active
+     */
+    isSessionActive(sessionId) {
+        return this.processes.has(sessionId);
+    }
+    /**
+     * Get all active sessions
+     */
+    getActiveSessions() {
+        return Array.from(this.processes.keys());
+    }
+    /**
+     * Get active session ID for a project
+     */
+    getActiveSessionForProject(projectId) {
+        for (const [sessionId, process] of this.processes.entries()) {
+            if (process.projectId === projectId) {
+                return sessionId;
+            }
+        }
+        return null;
+    }
+    /**
+     * Finalize an assistant message — add to history, persist, and notify frontend
+     */
+    finalizeAssistantMessage(sessionId, chatMsg) {
+        const claudeProc = this.processes.get(sessionId);
+        if (!claudeProc)
+            return;
+        // Prevent double-finalize for the same message
+        if (claudeProc.messages.find(m => m.id === chatMsg.id))
+            return;
+        try {
+            claudeProc.messages.push(chatMsg);
+            claudeProc.isProcessing = false;
+            claudeProc.lastPartialMessage = null;
+            this.syncSessionToFile(sessionId);
+            this.emit('message', { sessionId, message: chatMsg });
+        }
+        catch (err) {
+            console.error(`[Claude] Error in finalizeAssistantMessage for ${sessionId}:`, err);
+        }
+        // We NO LONGER emit status: idle here because we want to wait for the 'result' event
+    }
+    /**
+     * Build CLI arguments
+     */
+    buildArgs(sessionId, config, resumeSessionId) {
+        const args = [
+            '--output-format', 'stream-json',
+            '--verbose',
+        ];
+        if (resumeSessionId) {
+            args.push('--resume', resumeSessionId);
+        }
+        else {
+            args.push('--session-id', sessionId);
+        }
+        if (config.model) {
+            args.push('--model', config.model);
+        }
+        if (config.maxBudgetUsd) {
+            args.push('--max-budget-usd', config.maxBudgetUsd.toString());
+        }
+        if (config.permissionMode) {
+            args.push('--permission-mode', config.permissionMode);
+        }
+        if (config.systemPrompt) {
+            args.push('--system-prompt', config.systemPrompt);
+        }
+        if (config.customArgs && config.customArgs.length > 0) {
+            args.push(...config.customArgs);
+        }
+        return args;
+    }
+    /**
+     * Parse stream-json output from Claude CLI
+     */
+    handleOutput(sessionId, rawData) {
+        const claudeProc = this.processes.get(sessionId);
+        if (!claudeProc)
+            return;
+        // Accumulate buffer and process complete JSON lines
+        claudeProc.buffer += rawData;
+        // Process all complete lines
+        if (claudeProc.buffer.includes('\n')) {
+            const lines = claudeProc.buffer.split('\n');
+            claudeProc.buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed)
+                    continue;
+                this.tryParseAndProcess(sessionId, trimmed);
+            }
+        }
+        // Proactive check: if the remaining buffer looks like a complete JSON object
+        // (starts with '{' and ends with '}'), try to parse it now instead of waiting for a newline.
+        // This is common for the final 'result' event from the CLI.
+        const trimmedBuffer = claudeProc.buffer.trim();
+        if (trimmedBuffer.startsWith('{') && trimmedBuffer.endsWith('}')) {
+            if (this.tryParseAndProcess(sessionId, trimmedBuffer)) {
+                claudeProc.buffer = ''; // Success, clear it
+            }
+        }
+    }
+    tryParseAndProcess(sessionId, jsonStr) {
+        try {
+            const parsed = JSON.parse(jsonStr);
+            this.processStreamEvent(sessionId, parsed);
+            return true;
+        }
+        catch (e) {
+            // Not valid JSON, might be part of an ongoing object or plain text
+            return false;
+        }
+    }
+    /**
+     * Process a single stream-json event
+     */
+    processStreamEvent(sessionId, event) {
+        const type = event.type;
+        switch (type) {
+            case 'system': {
+                // System initialization message
+                const sysSessionId = event.session_id;
+                console.log(`[Claude] System init, session: ${sysSessionId}`);
+                this.emit('system', { sessionId, data: event });
+                break;
+            }
+            case 'assistant': {
+                const claudeProc = this.processes.get(sessionId);
+                if (!claudeProc)
+                    break;
+                const message = event.message;
+                if (!message)
+                    break;
+                const content = message.content;
+                const chatMsg = this.buildChatMessage(sessionId, content, message);
+                // Since we removed --include-partial-messages, this is usually a complete block or message
+                // We treat it as the final assistant message for this turn
+                this.finalizeAssistantMessage(sessionId, chatMsg);
+                break;
+            }
+            case 'content_block_start': {
+                const contentBlock = event.content_block;
+                if (contentBlock && contentBlock.type === 'tool_use') {
+                    // Emit tool start so frontend can render it incrementally
+                    const toolInfo = {
+                        id: contentBlock.id || (0, uuid_1.v4)(),
+                        name: contentBlock.name || 'unknown',
+                        input: contentBlock.input || {},
+                    };
+                    this.emit('stream:tool', { sessionId, tool: toolInfo });
+                    this.emit('status', { sessionId, status: 'tool_use' });
+                }
+                else if (contentBlock && contentBlock.type === 'text') {
+                    // Text block starting — no action needed, deltas will follow
+                }
+                break;
+            }
+            case 'content_block_delta': {
+                const delta = event.delta;
+                if (delta && delta.type === 'text_delta') {
+                    console.log(`[Claude] Emitting stream delta: ${delta.text?.toString().substring(0, 10)}...`);
+                    this.emit('stream', {
+                        sessionId,
+                        content: delta.text,
+                        messageId: `msg-${sessionId}-streaming`,
+                    });
+                }
+                // input_json_delta for tool input — not needed for UI
+                break;
+            }
+            case 'content_block_stop': {
+                // A content block finished streaming
+                break;
+            }
+            case 'message_start': {
+                // Beginning of a new message — reset tracking
+                const claudeProc = this.processes.get(sessionId);
+                if (claudeProc) {
+                    claudeProc.messageStopReceived = false;
+                }
+                this.emit('status', { sessionId, status: 'thinking' });
+                break;
+            }
+            case 'message_delta': {
+                // Message meta update (stop_reason, usage)
+                break;
+            }
+            case 'message_stop': {
+                // Message fully complete
+                const claudeProc = this.processes.get(sessionId);
+                if (claudeProc) {
+                    claudeProc.messageStopReceived = true;
+                    // If we have a saved partial message, finalize it now.
+                    // A final 'assistant' event may follow and will be handled there,
+                    // but if it doesn't arrive, we still have the message committed.
+                    if (claudeProc.lastPartialMessage) {
+                        this.finalizeAssistantMessage(sessionId, claudeProc.lastPartialMessage);
+                    }
+                }
+                break;
+            }
+            case 'result': {
+                // Final result
+                const result = event;
+                const costUsd = result.total_cost_usd || result.cost_usd || 0;
+                const durationMs = result.duration_ms || 0;
+                // Only emit result message if there's actual info
+                if (result.is_error) {
+                    const finalMsg = {
+                        id: `result-${Date.now()}`,
+                        role: 'system',
+                        content: `Error: ${result.error || result.result || 'Unknown error'}`,
+                        timestamp: new Date().toISOString(),
+                    };
+                    const claudeProc = this.processes.get(sessionId);
+                    if (claudeProc) {
+                        claudeProc.messages.push(finalMsg);
+                        this.syncSessionToFile(sessionId);
+                    }
+                    this.emit('result', { sessionId, result: finalMsg, data: result });
+                }
+                else if (costUsd > 0 || durationMs > 1000) {
+                    const finalMsg = {
+                        id: `result-${Date.now()}`,
+                        role: 'system',
+                        content: `Completed: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`,
+                        timestamp: new Date().toISOString(),
+                        cost: costUsd,
+                    };
+                    const claudeProc = this.processes.get(sessionId);
+                    if (claudeProc) {
+                        claudeProc.messages.push(finalMsg);
+                        this.syncSessionToFile(sessionId);
+                    }
+                    this.emit('result', { sessionId, result: finalMsg, data: result });
+                }
+                // Finalize the turn - hide loading now that we have the result
+                const cp = this.processes.get(sessionId);
+                if (cp)
+                    cp.isProcessing = false;
+                this.emit('status', { sessionId, status: 'idle' });
+                break;
+            }
+            default: {
+                // Forward unknown events
+                this.emit('raw', { sessionId, event });
+                break;
+            }
+        }
+    }
+    /**
+     * Build a ChatMessage from Claude's content blocks
+     */
+    buildChatMessage(sessionId, content, message) {
+        const textParts = [];
+        const toolCalls = [];
+        const blocks = [];
+        if (content) {
+            for (const block of content) {
+                if (block.type === 'text' && block.text) {
+                    textParts.push(block.text);
+                    blocks.push({ type: 'text', text: block.text });
+                }
+                else if (block.type === 'tool_use') {
+                    const tc = {
+                        id: block.id || (0, uuid_1.v4)(),
+                        name: block.name || 'unknown',
+                        input: block.input || {},
+                    };
+                    toolCalls.push(tc);
+                    blocks.push({ type: 'tool_use', tool: tc });
+                }
+                else if (block.type === 'tool_result') {
+                    // Find matching tool call in blocks and add result
+                    const matchId = block.id;
+                    for (let i = blocks.length - 1; i >= 0; i--) {
+                        const b = blocks[i];
+                        if (b.type === 'tool_use' && (matchId ? b.tool.id === matchId : true)) {
+                            b.tool.result = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+                            b.tool.isError = block.is_error;
+                            break;
+                        }
+                    }
+                    // Also update in toolCalls for backward compat
+                    const lastTool = matchId
+                        ? toolCalls.find(t => t.id === matchId)
+                        : toolCalls[toolCalls.length - 1];
+                    if (lastTool) {
+                        lastTool.result = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+                        lastTool.isError = block.is_error;
+                    }
+                }
+            }
+        }
+        const usage = message.usage;
+        return {
+            id: message.id || `msg-${Date.now()}`,
+            role: 'assistant',
+            content: textParts.join('\n'),
+            blocks: blocks.length > 0 ? blocks : undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+            timestamp: new Date().toISOString(),
+            model: message.model,
+            tokens: usage ? { input: usage.input_tokens, output: usage.output_tokens } : undefined,
+        };
+    }
+    /**
+     * Cleanup all sessions on shutdown
+     */
+    cleanup() {
+        for (const [sessionId] of this.processes) {
+            this.stopSession(sessionId);
+        }
+    }
+}
+exports.claudeService = new ClaudeService();
+//# sourceMappingURL=claude.js.map
