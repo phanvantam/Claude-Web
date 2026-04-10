@@ -1,0 +1,11 @@
+**/CLAUDE.md
+!/CLAUDE.md
+
+# SQLite database files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Dữ liệu JSON cũ
+backend/data/*.json
+backend/data/sessions/

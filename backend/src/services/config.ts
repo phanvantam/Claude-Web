@@ -1,9 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import db from './db';
 import type { GlobalConfig } from '../types';
-
-const DATA_DIR = path.join(__dirname, '../../data');
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG: GlobalConfig = {
   model: 'sonnet',
@@ -11,24 +7,29 @@ const DEFAULT_CONFIG: GlobalConfig = {
   theme: 'dark',
 };
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(CONFIG_FILE)) {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
-  }
-}
-
+/**
+ * Đọc config từ CSDL, merge với default để đảm bảo luôn có đầy đủ giá trị.
+ */
 export function getConfig(): GlobalConfig {
-  ensureDataDir();
-  const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
-  return { ...DEFAULT_CONFIG, ...JSON.parse(data) };
+  const row = db.prepare('SELECT data FROM config WHERE id = 1').get() as { data: string } | undefined;
+  if (!row) return { ...DEFAULT_CONFIG };
+
+  try {
+    const parsed = JSON.parse(row.data);
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
 }
 
+/**
+ * Cập nhật config — merge giá trị mới vào config hiện tại rồi ghi lại.
+ */
 export function updateConfig(config: Partial<GlobalConfig>): GlobalConfig {
   const current = getConfig();
   const updated = { ...current, ...config };
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2));
+
+  db.prepare('UPDATE config SET data = ? WHERE id = 1').run(JSON.stringify(updated));
+
   return updated;
 }

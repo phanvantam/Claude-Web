@@ -139,7 +139,7 @@ body {
   border-top: 1px solid var(--border) !important;
 }
 
-.project-card .ant-card-actions > li {
+.project-card .ant-card-actions>li {
   border-right: 1px solid var(--border) !important;
 }
 
@@ -161,28 +161,71 @@ body {
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 48px);
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Overlay loading khi chuyển phiên — backdrop blur + chặn mọi interaction */
+.session-switch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 15, 0.55);
+  backdrop-filter: blur(6px);
+  animation: switchOverlayIn 0.2s ease-out;
+}
+
+@keyframes switchOverlayIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(6px);
+  }
 }
 
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  background: rgba(10, 10, 15, 0.8);
-  backdrop-filter: blur(12px);
+  padding: 8px 16px;
+  background: rgba(10, 10, 15, 0.5);
   border-bottom: 1px solid var(--border);
+  min-height: 40px;
 }
 
 .chat-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+  min-width: 0;
+  max-width: 60%;
 }
 
-.chat-header-info {
-  display: flex;
-  flex-direction: column;
+.chat-header-left:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Đường dẫn dự án dạng monospace, cắt ellipsis khi quá dài */
+.chat-header-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* ========================================
@@ -192,6 +235,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px;
+  padding-bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -206,14 +250,24 @@ body {
   opacity: 0.8;
 }
 
+/* Indicator tải thêm messages cũ hơn */
+.chat-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  gap: 6px;
+}
+
 /* ========================================
    TIMELINE: USER ROW
    ======================================== */
 .tl-user-row {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  padding: 14px 0 6px;
+  gap: 4px;
+  padding: 10px 0 4px;
   animation: messageSlideIn 0.3s ease-out;
 }
 
@@ -222,12 +276,18 @@ body {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.6;
-  padding: 10px 16px;
+  padding: 6px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   max-width: 100%;
   word-wrap: break-word;
-  font-weight: 500;
+  font-weight: 400;
+}
+
+.tl-user-row .tl-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  padding-right: 4px;
 }
 
 /* ========================================
@@ -270,7 +330,7 @@ body {
   width: 2px;
   background: rgba(108, 92, 231, 0.3);
   min-height: 100%;
-  border-radius: 1px;
+  margin: -5px;
 }
 
 .tl-line.streaming {
@@ -284,8 +344,15 @@ body {
 }
 
 @keyframes linePulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Right column: all the block rows + meta */
@@ -307,43 +374,80 @@ body {
 
 /* Dot — positioned to hang left into the line-col area, centered on the line */
 .tl-dot {
-  width: 8px;
-  height: 8px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   position: absolute;
-  /* 28px line-col width / 2 = 14px center.  
-     Content-col starts at x=28. Dot center needs to be at x=14.
-     So left offset = 14 - 4 (half dot) - 28 (col start) = -18px */
-  left: -18px;
-  top: 8px;
+  /* 28px line-col / 2 = 14px center. Content-col starts at x=28.
+     Dot center at 14px → left = 14 - 9 (half 18) - 28 = -23px */
+  left: -23px;
+  top: 5px;
   z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Background tối → che line phía sau, tránh icon bị trong suốt */
+  background: var(--bg-primary);
 }
 
+/* Text block — icon message nhẹ nhàng */
 .tl-dot.dot-text {
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
 }
 
+/* Tool pending/running — cam */
 .tl-dot.dot-tool {
-  background: #e17055;
-  box-shadow: 0 0 6px rgba(225, 112, 85, 0.35);
+  color: #e17055;
 }
 
+/* Tool thành công — xanh lá */
+.tl-dot.dot-tool-success {
+  color: #51cf66;
+}
+
+/* Tool lỗi — đỏ */
+.tl-dot.dot-tool-error {
+  color: #ff6b6b;
+}
+
+/* Thinking live indicator — tím, spin */
 .tl-dot.dot-thinking {
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--accent-glow);
-  animation: dotPulse 1.2s ease-in-out infinite;
+  color: var(--accent);
+  animation: dotSpin 1.5s linear infinite;
+  background: var(--bg-primary);
 }
 
+/* Thinking block dot — Bulb icon, vàng nhạt */
+.tl-dot.dot-thinking-content {
+  color: #f1c40f;
+  background: var(--bg-primary);
+  opacity: 0.8;
+}
+
+/* Streaming text dot — tím, pulse */
 .tl-dot.streaming {
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+  color: var(--accent);
   animation: dotPulse 1.2s ease-in-out infinite;
+  background: var(--bg-primary);
+}
+
+@keyframes dotSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes dotPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.4); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.3);
+  }
 }
 
 /* Content area to the right of the dot */
@@ -351,8 +455,8 @@ body {
   flex: 1;
   min-width: 0;
   padding: 0 0 6px 0;
-  line-height: 1.65;
-  font-size: 14px;
+  line-height: 1.6;
+  font-size: 13px;
   color: var(--text-primary);
 }
 
@@ -463,6 +567,23 @@ body {
   word-break: break-all;
 }
 
+/* Tool đang chạy — viền cam nhấp nháy */
+.tl-tool-item.tl-tool-running {
+  border-left: 2px solid rgba(225, 112, 85, 0.4);
+  padding-left: 6px;
+  animation: toolRunPulse 2s ease-in-out infinite;
+}
+
+@keyframes toolRunPulse {
+  0%, 100% { border-left-color: rgba(225, 112, 85, 0.2); }
+  50% { border-left-color: rgba(225, 112, 85, 0.6); }
+}
+
+/* Nút hủy trong tool details */
+.tl-tool-abort {
+  padding: 6px 0 2px;
+}
+
 /* ========================================
    TIMELINE: META
    ======================================== */
@@ -487,6 +608,14 @@ body {
   border-radius: 8px;
 }
 
+.tl-duration {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 200, 50, 0.6);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .tl-tokens,
 .tl-cost {
   color: var(--text-muted);
@@ -503,11 +632,60 @@ body {
   padding: 4px 0;
 }
 
+/* Nút hủy inline — nhỏ gọn bên cạnh timer */
+.tl-abort-btn {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 107, 107, 0.6);
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: 8px;
+  font-size: 11px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tl-abort-btn:hover {
+  background: rgba(255, 107, 107, 0.2);
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
+/* Thinking content block — icon bóng đèn, màu vàng nhạt */
+.tl-dot.dot-thinking-content {
+  color: rgba(255, 200, 50, 0.5);
+}
+
+.tl-thinking-block {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+  margin: 2px 0;
+}
+
+.tl-thinking-block:hover {
+  opacity: 0.8;
+}
+
+/* Nội dung thinking — font nhỏ, nhạt, italic */
+.thinking-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px 0 2px;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @keyframes messageSlideIn {
   from {
     opacity: 0;
     transform: translateY(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -524,20 +702,64 @@ body {
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
 }
 
 /* ========================================
    INPUT BOX
    ======================================== */
 .input-box-wrapper {
-  padding: 12px 20px 16px;
-  background: rgba(10, 10, 15, 0.9);
+  padding: 6px 20px 8px;
+  background: rgba(10, 10, 15, 0.95);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  isolation: isolate;
 }
 
+/* === Toolbar: model selector + thinking toggle === */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 6px;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+
+
+/* === Main input box === */
 .input-box {
   display: flex;
   align-items: flex-end;
@@ -605,15 +827,247 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
-.input-hint {
-  text-align: center;
-  color: var(--text-muted);
+/* === Permission panel — expand dính phía trên input box === */
+.permission-panel {
+  background: rgba(22, 22, 38, 0.98);
+  border: 1px solid rgba(225, 112, 85, 0.25);
+  border-radius: 12px;
+  margin-bottom: 6px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(225, 112, 85, 0.08);
+  backdrop-filter: blur(16px);
+  animation: permissionSlideUp 0.25s ease-out;
+  overflow: hidden;
+}
+
+@keyframes permissionSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 400px;
+  }
+}
+
+.permission-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.permission-panel-icon {
+  color: #e17055;
+  font-size: 14px;
+}
+
+.permission-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #e17055;
+}
+
+.permission-panel-body {
+  padding: 10px 14px;
+}
+
+.permission-panel-desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 8px;
+}
+
+.permission-tool-help {
+  margin-left: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: help;
+  transition: color 0.2s ease;
+}
+
+.permission-tool-help:hover {
+  color: var(--accent-light);
+}
+
+.permission-panel-code {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  margin-top: 6px;
+  color: var(--text-secondary);
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.permission-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.permission-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.permission-btn-deny {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.permission-btn-deny:hover {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.permission-btn-allow {
+  background: rgba(108, 92, 231, 0.15);
+  color: var(--accent-light);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.permission-btn-allow:hover {
+  background: rgba(108, 92, 231, 0.25);
+  color: #fff;
+  border-color: rgba(108, 92, 231, 0.5);
+}
+
+/* === Slash command popup === */
+.slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 20px;
+  right: 20px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(22, 22, 38, 0.98);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  margin-bottom: 6px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  z-index: 9999;
+}
+
+.slash-menu-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 10px 6px;
+}
+
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.slash-item:hover,
+.slash-item.active {
+  background: rgba(108, 92, 231, 0.12);
+}
+
+.slash-cmd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.slash-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tag nguồn gốc plugin */
+.slash-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* === Model dropdown menu items === */
+.model-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-menu-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.model-menu-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Icon dấu hỏi trong dropdown menu — căn phải, hover highlight */
+.menu-item-help {
+  margin-left: auto;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  padding-left: 8px;
+}
+
+.menu-item-help:hover {
+  color: var(--accent-light);
 }
 
 /* ========================================
@@ -636,13 +1090,16 @@ body {
 .markdown-body h3,
 .markdown-body h4 {
   color: var(--text-primary);
-  margin: 16px 0 8px;
+  /* Heading cùng font-size với body — chỉ khác weight để không bị to bé */
+  font-size: inherit;
   font-weight: 600;
+  margin: 8px 0 4px;
+  line-height: 1.5;
 }
 
-.markdown-body h1 { font-size: 1.4em; }
-.markdown-body h2 { font-size: 1.2em; }
-.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h1 {
+  font-weight: 700;
+}
 
 .markdown-body ul,
 .markdown-body ol {
@@ -661,6 +1118,13 @@ body {
   color: var(--text-secondary);
   background: rgba(108, 92, 231, 0.05);
   border-radius: 0 6px 6px 0;
+}
+
+.markdown-body hr {
+  border: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
 }
 
 .inline-code {
@@ -747,6 +1211,221 @@ body {
 }
 
 /* ========================================
+   MCP DRAWER
+   ======================================== */
+
+/* Drawer dark theme */
+.mcp-drawer .ant-drawer-header-title .ant-drawer-close {
+  color: var(--text-muted) !important;
+}
+
+/* Tab styling trong drawer */
+.mcp-tabs .ant-tabs-nav {
+  margin-bottom: 12px !important;
+}
+
+.mcp-tabs .ant-tabs-tab {
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.mcp-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #00cec9 !important;
+}
+
+.mcp-tabs .ant-tabs-ink-bar {
+  background: #00cec9 !important;
+}
+
+/* Tab header: info + edit button */
+.mcp-tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mcp-tab-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Server card */
+.mcp-server-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.mcp-server-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.mcp-server-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.mcp-server-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-server-type-tag {
+  font-size: 10px !important;
+  padding: 0 4px !important;
+  line-height: 16px !important;
+  background: rgba(108, 92, 231, 0.1) !important;
+  border: 1px solid rgba(108, 92, 231, 0.2) !important;
+  color: #b8b0ff !important;
+}
+
+.mcp-server-cmd {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-server-env {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mcp-env-tag {
+  font-size: 9px !important;
+  padding: 0 4px !important;
+  line-height: 14px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-muted) !important;
+}
+
+/* JSON Editor */
+.mcp-editor {
+  margin-top: 4px;
+}
+
+.mcp-editor-tip {
+  background: rgba(243, 156, 18, 0.08);
+  border: 1px dashed rgba(243, 156, 18, 0.25);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #f39c12;
+}
+
+.mcp-editor-tip b {
+  color: #fff;
+  font-weight: 600;
+}
+
+.mcp-editor-textarea textarea {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  color: var(--text-primary) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 10px !important;
+  line-height: 1.45 !important;
+  letter-spacing: 0.2px;
+}
+
+.mcp-editor-textarea textarea:focus {
+  border-color: rgba(0, 206, 201, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(0, 206, 201, 0.1) !important;
+}
+
+.mcp-editor-textarea textarea::placeholder {
+  color: var(--text-muted) !important;
+  font-size: 10px !important;
+}
+
+.mcp-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Nút Sửa JSON / Hủy trên header tab */
+.mcp-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+  height: 24px;
+}
+
+.mcp-edit-btn:hover:not(:disabled) {
+  background: rgba(0, 206, 201, 0.1);
+  border-color: rgba(0, 206, 201, 0.25);
+  color: #00cec9;
+}
+
+.mcp-edit-btn.active {
+  background: rgba(255, 107, 107, 0.08);
+  border-color: rgba(255, 107, 107, 0.2);
+  color: rgba(255, 107, 107, 0.7);
+}
+
+.mcp-edit-btn.active:hover {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+}
+
+.mcp-edit-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Footer note */
+.mcp-footer-note {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+/* ========================================
    ANTD OVERRIDES
    ======================================== */
 .ant-layout-sider-trigger {
@@ -758,12 +1437,60 @@ body {
   background: rgba(108, 92, 231, 0.15) !important;
 }
 
-.ant-form-item-label > label {
+.ant-form-item-label>label {
   color: var(--text-secondary) !important;
 }
 
 .ant-empty-description {
   color: var(--text-muted) !important;
+}
+
+/* ========================================
+   SETTINGS TABS
+   ======================================== */
+.settings-tabs .ant-tabs-nav {
+  margin-bottom: 20px !important;
+}
+
+.settings-tabs .ant-tabs-nav::before {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.settings-tabs .ant-tabs-tab {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: none !important;
+  border-radius: 10px 10px 0 0 !important;
+  color: var(--text-secondary) !important;
+  padding: 8px 20px !important;
+  transition: all 0.25s ease;
+  font-size: 13px;
+}
+
+.settings-tabs .ant-tabs-tab:hover {
+  color: var(--text-primary) !important;
+  background: rgba(108, 92, 231, 0.06) !important;
+}
+
+.settings-tabs .ant-tabs-tab-active {
+  background: rgba(108, 92, 231, 0.12) !important;
+  border-color: rgba(108, 92, 231, 0.3) !important;
+}
+
+.settings-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-light) !important;
+  font-weight: 600;
+}
+
+.settings-tabs .ant-tabs-ink-bar {
+  background: var(--accent) !important;
+  height: 2px !important;
+}
+
+/* Monaco editor wrapper — bo tròn và viền */
+.settings-tabs .monaco-editor,
+.settings-tabs .monaco-editor .overflow-guard {
+  border-radius: 8px !important;
 }
 
 /* ========================================

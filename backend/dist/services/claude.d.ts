@@ -1,69 +1,107 @@
 import { EventEmitter } from 'events';
 import type { ChatMessage } from '../types';
 declare class ClaudeService extends EventEmitter {
-    private processes;
-    /**
-     * Get the state of an active session
-     */
+    private sessions;
     getSessionState(sessionId: string): {
         messages: ChatMessage[];
         isProcessing: boolean;
+        model?: string;
+        effortLevel?: string;
+        permissionMode?: string;
+        pendingPermission?: any;
     } | null;
-    private syncSessionToFile;
     /**
-     * Start a new Claude CLI session for a project.
-     * Uses --print --input-format stream-json --output-format stream-json
+     * Cập nhật effort level cho một session đang active hoặc đã lưu.
      */
-    startSession(projectId: string, existingSessionId?: string): Promise<string>;
+    setSessionEffortLevel(sessionId: string, effortLevel?: string): void;
     /**
-     * Send a user message to an active Claude session
+     * Lấy effort level hiện tại của session.
+     */
+    getSessionEffortLevel(sessionId: string): string | undefined;
+    /**
+     * Cập nhật permission mode cho một session đang active hoặc đã lưu.
+     */
+    setSessionPermissionMode(sessionId: string, permissionMode?: string): void;
+    /**
+     * Lấy permission mode hiện tại của session.
+     */
+    getSessionPermissionMode(sessionId: string): string | undefined;
+    /**
+     * Kiểm tra xem Claude CLI có file conversation cho session này không.
+     * CLI lưu tại: ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
+     * Đường dẫn cwd được encode: '/' → '-', bỏ trailing slash.
+     */
+    private hasCliSession;
+    /**
+     * Thêm 1 message vào CSDL.
+     */
+    private persistMessage;
+    /**
+     * Khởi tạo hoặc attach vào một session.
+     * Nếu session đã có trong memory → trả lại luôn.
+     * Nếu có trong DB → load messages.
+     * Nếu chưa có → tạo mới trong DB.
+     */
+    startSession(projectId: string, existingSessionId?: string, effortLevel?: string): Promise<string>;
+    /**
+     * Gửi message tới Claude SDK.
+     * SDK tự spawn CLI process, xử lý stdin/stdout, và trả về AsyncGenerator<SDKMessage>.
      */
     sendMessage(sessionId: string, message: string): void;
     /**
-     * Abort the current request in a session
+     * Chạy SDK query() và xử lý stream messages.
+     * Đây là core logic — thay thế toàn bộ spawnClaudeProcess + handleOutput + processStreamEvent cũ.
      */
-    abortSession(sessionId: string): void;
+    private runSDKQuery;
     /**
-     * Stop and cleanup a session
+     * Xử lý phản hồi permission từ user (qua WebSocket).
+     * Gọi khi user chọn Allow hoặc Deny trên UI.
      */
-    stopSession(sessionId: string): void;
+    resolvePermission(sessionId: string, allowed: boolean): void;
     /**
-     * Check if a session is active
-     */
-    isSessionActive(sessionId: string): boolean;
-    /**
-     * Get all active sessions
-     */
-    getActiveSessions(): string[];
-    /**
-     * Get active session ID for a project
-     */
-    getActiveSessionForProject(projectId: string): string | null;
-    /**
-     * Finalize an assistant message — add to history, persist, and notify frontend
+     * Finalize assistant message — thêm vào history, lưu DB, notify frontend.
+     * Xử lý trùng lặp khi CLI emit cùng message id 2 lần.
      */
     private finalizeAssistantMessage;
     /**
-     * Build CLI arguments
+     * Abort session hiện tại — gửi signal abort cho SDK query
      */
-    private buildArgs;
+    abortSession(sessionId: string): void;
     /**
-     * Parse stream-json output from Claude CLI
+     * Dừng và xóa session khỏi memory
      */
-    private handleOutput;
-    private tryParseAndProcess;
+    stopSession(sessionId: string): void;
     /**
-     * Process a single stream-json event
+     * Kiểm tra session có active trong memory không
      */
-    private processStreamEvent;
+    isSessionActive(sessionId: string): boolean;
     /**
-     * Build a ChatMessage from Claude's content blocks
+     * Danh sách session IDs đang active
      */
-    private buildChatMessage;
+    getActiveSessions(): string[];
     /**
-     * Cleanup all sessions on shutdown
+     * Danh sách sessionId đang processing (isProcessing = true).
+     * Dùng cho sidebar hiển thị trạng thái.
+     */
+    getProcessingSessions(): string[];
+    /**
+     * Lấy sessionId active cho một project
+     */
+    getActiveSessionForProject(projectId: string): string | null;
+    /**
+     * Cleanup tất cả sessions khi shutdown
      */
     cleanup(): void;
+    /**
+     * Nén context hội thoại (compact).
+     * Flow: Gọi SDK tóm tắt hội thoại hiện tại → tạo session mới → chèn bản tóm tắt.
+     * Trả về sessionId mới nếu thành công, throw nếu thất bại.
+     */
+    compactSession(sessionId: string): Promise<string>;
+    /**
+     * Thực hiện compact: gọi SDK tóm tắt → tạo session mới.
+     */
+    private compactFromMessages;
 }
 export declare const claudeService: ClaudeService;
 export {};

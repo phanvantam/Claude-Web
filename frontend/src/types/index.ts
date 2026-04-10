@@ -23,7 +23,8 @@ export interface ToolCall {
 
 export type ContentBlock =
   | { type: 'text'; text: string }
-  | { type: 'tool_use'; tool: ToolCall };
+  | { type: 'tool_use'; tool: ToolCall }
+  | { type: 'thinking'; thinking: string };
 
 export interface ChatMessage {
   id: string;
@@ -35,6 +36,7 @@ export interface ChatMessage {
   isStreaming?: boolean;
   cost?: number;
   model?: string;
+  durationMs?: number;
   tokens?: {
     input: number;
     output: number;
@@ -51,6 +53,11 @@ export interface ChatSession {
   updatedAt: string;
   isActive: boolean;
   totalCost?: number;
+  model?: string;
+  effortLevel?: string;
+  permissionMode?: string;
+  /** Số tin nhắn trong phiên — chỉ có khi lấy từ danh sách sessions */
+  messageCount?: number;
 }
 
 export interface GlobalConfig {

@@ -14,8 +14,9 @@ export interface ClaudeStreamMessage {
     [key: string]: unknown;
 }
 export interface ClaudeContentBlock {
-    type: 'text' | 'tool_use' | 'tool_result';
+    type: 'text' | 'tool_use' | 'tool_result' | 'thinking';
     text?: string;
+    thinking?: string;
     id?: string;
     name?: string;
     input?: Record<string, unknown>;
@@ -55,6 +56,9 @@ export type ContentBlock = {
 } | {
     type: 'tool_use';
     tool: ToolCall;
+} | {
+    type: 'thinking';
+    thinking: string;
 };
 export interface ChatMessage {
     id: string;
@@ -66,6 +70,7 @@ export interface ChatMessage {
     isStreaming?: boolean;
     cost?: number;
     model?: string;
+    durationMs?: number;
     tokens?: {
         input: number;
         output: number;
@@ -77,6 +82,8 @@ export interface ToolCall {
     input: Record<string, unknown>;
     result?: string;
     isError?: boolean;
+    /** Nội bộ: tích lũy partial JSON từ input_json_delta — sẽ bị xóa trước khi emit */
+    _inputJsonStr?: string;
 }
 export interface ChatSession {
     id: string;
@@ -88,6 +95,9 @@ export interface ChatSession {
     updatedAt: string;
     isActive: boolean;
     totalCost?: number;
+    model?: string;
+    effortLevel?: string;
+    permissionMode?: string;
 }
 export interface GlobalConfig {
     model?: string;
@@ -119,6 +129,7 @@ export interface ServerToClientEvents {
     'chat:status': (data: {
         sessionId: string;
         status: 'idle' | 'thinking' | 'tool_use';
+        toolName?: string;
     }) => void;
     'session:started': (data: {
         sessionId: string;

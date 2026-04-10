@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Typography, Tag, Button, Tooltip } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Layout, Menu, Typography, Button, Tooltip } from 'antd';
 import {
   MessageOutlined,
   SettingOutlined,
@@ -7,51 +7,107 @@ import {
   FolderOpenOutlined,
   ProjectOutlined,
   PlusOutlined,
+  MenuFoldOutlined,
+  SyncOutlined,
+  CheckCircleFilled,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { sessionsApi, projectsApi } from '../../services/api';
+import { socketService } from '../../services/socket';
+import { useSessionsStatus } from '../../hooks/useSessionsStatus';
 import type { ChatSession, Project } from '../../types';
 
-const { Sider, Content, Header } = Layout;
+const { Sider, Content } = Layout;
 const { Text } = Typography;
 
 interface AppLayoutProps {
   children: React.ReactNode;
-  isConnected: boolean;
 }
 
-const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
+  const { isProcessing, isUnread } = useSessionsStatus();
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [sessData, projData] = await Promise.all([
+        sessionsApi.getAll(),
+        projectsApi.getAll()
+      ]);
+      setSessions(sessData);
+      setProjects(projData);
+    } catch (err) {
+      console.error('Failed to load data', err);
+    }
+  }, []);
 
   useEffect(() => {
-    // Fetch sessions and projects periodically or on location change
-    const fetchData = async () => {
-      try {
-        const [sessData, projData] = await Promise.all([
-          sessionsApi.getAll(),
-          projectsApi.getAll()
-        ]);
-        setSessions(sessData);
-        setProjects(projData);
-      } catch (err) {
-        console.error('Failed to load data', err);
-      }
-    };
     fetchData();
+
+    // Poll mỗi 5 giây để đồng bộ trạng thái
     const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [location.pathname]);
+
+    // Lắng nghe WebSocket — refetch ngay khi có session mới hoặc kết thúc
+    const socket = socketService.connect();
+    const handleSessionChange = () => fetchData();
+    socket.on('global:session_created', handleSessionChange);
+    socket.on('session:ended', handleSessionChange);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('global:session_created', handleSessionChange);
+      socket.off('session:ended', handleSessionChange);
+      socketService.release();
+    };
+  }, [fetchData]);
+
+  // Refetch khi navigate (ví dụ: vào session mới)
+  useEffect(() => {
+    fetchData();
+  }, [location.pathname, fetchData]);
+
+  /**
+   * Tạo icon cho session dựa trên trạng thái:
+   * 1. Đang xử lý → icon xoay (SyncOutlined spin) màu vàng
+   * 2. Đã xong & chưa đọc → tick xanh (CheckCircleFilled)
+   * 3. Bình thường → icon tin nhắn (MessageOutlined)
+   */
+  const getSessionIcon = (session: ChatSession) => {
+    if (isProcessing(session.id)) {
+      return (
+        <Tooltip title="Đang xử lý...">
+          <SyncOutlined spin style={{ color: '#fdcb6e', fontSize: 14 }} />
+        </Tooltip>
+      );
+    }
+
+    if (isUnread(session.id, session.updatedAt)) {
+      return (
+        <Tooltip title="Có phản hồi mới">
+          <CheckCircleFilled style={{ color: '#52c41a', fontSize: 14 }} />
+        </Tooltip>
+      );
+    }
+
+    return <MessageOutlined />;
+  };
 
   // Build menu items grouped by project
   const menuItems = projects.map(proj => {
     const projSessions = sessions.filter(s => s.projectId === proj.id);
+
+    // Kiểm tra xem project có session nào đang chạy không
+    const hasProcessing = projSessions.some(s => isProcessing(s.id));
+
     return {
       key: `proj-${proj.id}`,
-      icon: <ProjectOutlined />,
+      icon: hasProcessing
+        ? <SyncOutlined spin style={{ color: '#fdcb6e' }} />
+        : <ProjectOutlined />,
       label: proj.name,
       children: [
         {
@@ -62,8 +118,29 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
         },
         ...projSessions.map(session => ({
           key: `/chat/${proj.id}?sessionId=${session.id}`,
-          icon: <MessageOutlined />,
-          label: session.name || `Phiên ${new Date(session.createdAt).toLocaleTimeString('vi-VN')}`,
+          icon: getSessionIcon(session),
+          label: (
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontWeight: isUnread(session.id, session.updatedAt) ? 600 : 400,
+            }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {session.name || `Phiên ${new Date(session.createdAt).toLocaleTimeString('vi-VN')}`}
+              </span>
+              {(session.messageCount ?? 0) > 0 && (
+                <span style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.3)',
+                  marginLeft: 6,
+                  flexShrink: 0,
+                }}>
+                  {session.messageCount}
+                </span>
+              )}
+            </span>
+          ),
           onClick: () => navigate(`/chat/${proj.id}?sessionId=${session.id}`),
         }))
       ]
@@ -78,9 +155,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
         onCollapse={setCollapsed}
         theme="dark"
         width={260}
+        trigger={null}
         style={{
           background: 'linear-gradient(180deg, #0a0a0f 0%, #12121a 100%)',
           borderRight: '1px solid rgba(255,255,255,0.06)',
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <div
@@ -88,21 +172,37 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
             height: 64,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: collapsed ? 'center' : 'space-between',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
-            gap: 8,
-            cursor: 'pointer',
+            padding: collapsed ? '0' : '0 16px',
           }}
-          onClick={() => navigate('/')}
         >
-          <ThunderboltOutlined style={{ fontSize: 24, color: '#6c5ce7' }} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+            }}
+            onClick={() => collapsed ? setCollapsed(false) : navigate('/')}
+          >
+            <ThunderboltOutlined style={{ fontSize: 24, color: '#6c5ce7' }} />
+            {!collapsed && (
+              <Text strong style={{ color: '#fff', fontSize: 16, letterSpacing: 1 }}>
+                Claude Web
+              </Text>
+            )}
+          </div>
           {!collapsed && (
-            <Text strong style={{ color: '#fff', fontSize: 16, letterSpacing: 1 }}>
-              Claude Web
-            </Text>
+            <Button
+              type="text"
+              icon={<MenuFoldOutlined />}
+              onClick={() => setCollapsed(true)}
+              style={{ color: 'rgba(255,255,255,0.5)' }}
+            />
           )}
         </div>
-        <div style={{ padding: '12px 0', height: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+        <div style={{ padding: '12px 0', paddingBottom: 140, height: 'calc(100vh - 64px)', overflowY: 'auto', flex: 1 }}>
           <Menu
             theme="dark"
             mode="inline"
@@ -115,12 +215,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
             }}
           />
         </div>
-        <div style={{ position: 'absolute', bottom: 0, width: '100%', padding: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          width: '100%',
+          padding: '8px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(18, 18, 28, 0.95)',
+          backdropFilter: 'blur(8px)',
+        }}>
           <Menu
             theme="dark"
             mode="inline"
             selectable={false}
             items={[
+              {
+                key: 'du-an',
+                icon: <FolderOpenOutlined />,
+                label: 'Dự án',
+                onClick: () => navigate('/'),
+              },
               {
                 key: 'settings',
                 icon: <SettingOutlined />,
@@ -133,42 +247,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, isConnected }) => {
         </div>
       </Sider>
       <Layout>
-        <Header
-          style={{
-            background: 'rgba(10, 10, 15, 0.8)',
-            backdropFilter: 'blur(12px)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            padding: '0 24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: 48,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <Tooltip title="Quản lý Dự án">
-              <Button 
-                type="text" 
-                icon={<FolderOpenOutlined style={{ color: 'rgba(255,255,255,0.65)', fontSize: 16 }} />} 
-                onClick={() => navigate('/')}
-              />
-            </Tooltip>
-          </div>
-          <Tag
-            color={isConnected ? 'green' : 'red'}
-            style={{
-              borderRadius: 12,
-              fontSize: 11,
-              padding: '0 10px',
-            }}
-          >
-            {isConnected ? '● Connected' : '○ Disconnected'}
-          </Tag>
-        </Header>
         <Content
           style={{
             background: '#0f0f17',
-            minHeight: 'calc(100vh - 48px)',
+            minHeight: '100vh',
           }}
         >
           {children}

@@ -4,19 +4,19 @@ import AppLayout from './components/Layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import ChatPage from './pages/ChatPage';
 import Settings from './pages/Settings';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { socketService } from './services/socket';
 
 function App() {
-  const [isConnected, setIsConnected] = useState(false);
-
   useEffect(() => {
-    const socket = socketService.connect();
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
+    // Khởi tạo kết nối socket sớm — các hook khác cũng gọi connect()
+    // nhưng SocketService chỉ tạo 1 instance duy nhất (singleton).
+    socketService.connect();
 
     return () => {
-      socketService.disconnect();
+      // Dùng release() thay vì disconnect() để không phá hủy socket
+      // khi các hook khác (useChat, useSessionsStatus) vẫn đang dùng.
+      socketService.release();
     };
   }, []);
 
@@ -62,7 +62,7 @@ function App() {
       }}
     >
       <BrowserRouter>
-        <AppLayout isConnected={isConnected}>
+        <AppLayout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/chat/:projectId" element={<ChatPage />} />

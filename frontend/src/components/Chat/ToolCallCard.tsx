@@ -15,13 +15,21 @@ import {
   ExportOutlined,
   QuestionCircleOutlined,
   ToolOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import type { ToolCall } from '../../types';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
+  /**
+   * true khi tool block thuộc message đã finalized (không phải streaming).
+   * Tool không có result trong message đã finalized → coi như đã hoàn thành,
+   * vì SDK trả tool_result trong message riêng, không gắn vào tool_use block.
+   */
+  isFinalized?: boolean;
 }
 
+/** Icon tương ứng cho từng tool */
 const getToolIcon = (name: string) => {
   switch (name) {
     case 'Read': return <FileTextOutlined />;
@@ -41,6 +49,7 @@ const getToolIcon = (name: string) => {
   }
 };
 
+/** Tóm tắt input tool — hiện trên header */
 const getToolSummary = (toolCall: ToolCall): string => {
   const input = toolCall.input;
   const name = toolCall.name;
@@ -67,23 +76,31 @@ const getToolSummary = (toolCall: ToolCall): string => {
   }
 };
 
-const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
+const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = false }) => {
+  const hasResult = toolCall.result !== undefined;
+  // Tool đã hoàn thành nếu có explicit result, HOẶC nếu message đã finalized
+  // (SDK trả tool_result trong message riêng — không gắn vào block này)
+  const isDone = hasResult || isFinalized;
+  const isError = toolCall.isError;
+  const isRunning = !isDone;
+
+  // Mặc định collapse — user click để mở xem chi tiết
   const [expanded, setExpanded] = useState(false);
   const summary = getToolSummary(toolCall);
-  const isDone = toolCall.result !== undefined;
-  const isError = toolCall.isError;
 
   return (
-    <div className="tl-tool-item" onClick={() => setExpanded(!expanded)}>
-      <div className="tl-tool-header">
+    <div className={`tl-tool-item ${isRunning ? 'tl-tool-running' : ''}`}>
+      <div className="tl-tool-header" onClick={() => setExpanded(!expanded)}>
         <span className="tl-tool-icon">{getToolIcon(toolCall.name)}</span>
         <span className="tl-tool-name">{toolCall.name}</span>
         {summary && <span className="tl-tool-summary">{summary}</span>}
         <span className="tl-tool-status">
-          {isDone && (
+          {isDone ? (
             isError
               ? <CloseCircleOutlined style={{ color: '#ff6b6b', fontSize: 12 }} />
               : <CheckCircleOutlined style={{ color: '#51cf66', fontSize: 12 }} />
+          ) : (
+            <LoadingOutlined style={{ color: '#e17055', fontSize: 12 }} spin />
           )}
         </span>
         <span className="tl-tool-toggle">

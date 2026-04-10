@@ -6,7 +6,9 @@ import path from 'path';
 import projectRoutes from './routes/projects';
 import configRoutes from './routes/config';
 import sessionRoutes from './routes/sessions';
+import claudeMetaRoutes from './routes/claude-meta';
 import { claudeService } from './services/claude';
+import { logger } from './services/logger';
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -27,6 +29,7 @@ app.use(express.json());
 app.use('/api/projects', projectRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/claude', claudeMetaRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -37,13 +40,13 @@ app.get('/api/health', (_req, res) => {
 // Socket.io Event Handling
 // =========================
 io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
+  logger.info(`[Socket] Client connected: ${socket.id}`);
 
   // Start a new Claude session (or resume from disk)
-  socket.on('session:start', async (data: { projectId: string; sessionId?: string }) => {
+  socket.on('session:start', async (data: { projectId: string; sessionId?: string; effortLevel?: string }) => {
     try {
-      console.log(`[Socket] session:start received: projectId=${data.projectId}, sessionId=${data.sessionId}`);
-      const sessionId = await claudeService.startSession(data.projectId, data.sessionId);
+      logger.info(`[Socket] session:start received: projectId=${data.projectId}, sessionId=${data.sessionId}, effortLevel=${data.effortLevel}`);
+      const sessionId = await claudeService.startSession(data.projectId, data.sessionId, data.effortLevel);
 
       // Leave any previous session rooms first
       for (const room of socket.rooms) {
@@ -55,11 +58,14 @@ io.on('connection', (socket) => {
       
       // Push current state (messages loaded from disk or memory)
       const state = claudeService.getSessionState(sessionId);
-      console.log(`[Socket] session:started emitting: sessionId=${sessionId}, messages=${state?.messages?.length || 0}`);
+      logger.info(`[Socket] session:started emitting: sessionId=${sessionId}, messages=${state?.messages?.length || 0}`);
       socket.emit('session:started', { sessionId, state });
+
+      // Thông báo toàn cục cho sidebar cập nhật ngay lập tức
+      io.emit('global:session_created', { sessionId, projectId: data.projectId });
     } catch (err: unknown) {
-      const error = err instanceof Error ? err.message : 'Unknown error';
-      console.error(`[Socket] session:start error:`, error);
+      logger.error(`[Socket] session:start error:`, err);
+      const error = err instanceof Error ? err.message : String(err);
       socket.emit('chat:error', { sessionId: '', error });
     }
   });
@@ -92,8 +98,17 @@ io.on('connection', (socket) => {
         message: userMsg,
       });
     } catch (err: unknown) {
-      const error = err instanceof Error ? err.message : 'Unknown error';
-      socket.emit('chat:error', { sessionId: data.sessionId, error });
+      // Log chi tiết lỗi ở server để dễ debug
+      logger.error(`[chat:send] Error for session ${data.sessionId}:`, err);
+      let errorMsg: string;
+      if (err instanceof Error) {
+        errorMsg = err.message;
+      } else if (typeof err === 'string') {
+        errorMsg = err;
+      } else {
+        errorMsg = JSON.stringify(err) || 'Lỗi không xác định';
+      }
+      socket.emit('chat:error', { sessionId: data.sessionId, error: errorMsg });
     }
   });
 
@@ -108,8 +123,76 @@ io.on('connection', (socket) => {
     io.to(data.sessionId).emit('session:ended', { sessionId: data.sessionId });
   });
 
+  // Set effort level for current session
+  socket.on('session:setEffort', (data: { sessionId: string; effortLevel?: string }) => {
+    try {
+      claudeService.setSessionEffortLevel(data.sessionId, data.effortLevel);
+      io.to(data.sessionId).emit('session:effortChanged', {
+        sessionId: data.sessionId,
+        effortLevel: data.effortLevel,
+      });
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+    }
+  });
+
+  // Set permission mode for current session
+  socket.on('session:setPermissionMode', (data: { sessionId: string; permissionMode?: string }) => {
+    try {
+      claudeService.setSessionPermissionMode(data.sessionId, data.permissionMode);
+      io.to(data.sessionId).emit('session:permissionModeChanged', {
+        sessionId: data.sessionId,
+        permissionMode: data.permissionMode,
+      });
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+    }
+  });
+
+  // Phản hồi permission request từ frontend (allow/deny tool use)
+  socket.on('permission:respond', (data: { sessionId: string; allowed: boolean }) => {
+    try {
+      claudeService.resolvePermission(data.sessionId, data.allowed);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+    }
+  });
+
+  // Compact session — nén context hội thoại
+  socket.on('chat:compact', async (data: { sessionId: string }) => {
+    try {
+      logger.info(`[Socket] chat:compact for session ${data.sessionId}`);
+      socket.emit('chat:status', { sessionId: data.sessionId, status: 'thinking' });
+
+      const newSessionId = await claudeService.compactSession(data.sessionId);
+
+      // Rời room cũ, join room mới
+      socket.leave(data.sessionId);
+      socket.join(newSessionId);
+
+      // Gửi session mới cho frontend
+      const newState = claudeService.getSessionState(newSessionId);
+      socket.emit('session:compacted', {
+        oldSessionId: data.sessionId,
+        newSessionId,
+        state: newState,
+      });
+
+      // Reset status
+      socket.emit('chat:status', { sessionId: data.sessionId, status: 'idle' });
+    } catch (err: unknown) {
+      logger.error(`[chat:compact] Error:`, err);
+      const error = err instanceof Error ? err.message : String(err);
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+      socket.emit('chat:status', { sessionId: data.sessionId, status: 'idle' });
+    }
+  });
+
   socket.on('disconnect', () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
+    logger.info(`[Socket] Client disconnected: ${socket.id}`);
   });
 });
 
@@ -134,6 +217,11 @@ claudeService.on('stream:partial', (data) => {
 
 claudeService.on('status', (data) => {
   io.to(data.sessionId).emit('chat:status', data);
+  // Gửi trạng thái toàn cục cho mọi client — dùng cho Sidebar
+  io.emit('global:session_status', {
+    sessionId: data.sessionId,
+    status: data.status,
+  });
 });
 
 claudeService.on('error', (data) => {
@@ -149,6 +237,11 @@ claudeService.on('result', (data) => {
 
 claudeService.on('session:ended', (data) => {
   io.to(data.sessionId).emit('session:ended', data);
+});
+
+// Forward permission request tới frontend
+claudeService.on('permission:request', (data) => {
+  io.to(data.sessionId).emit('permission:request', data);
 });
 
 // =========================
@@ -169,13 +262,13 @@ app.use((req, res, next) => {
 // Start Server
 // =========================
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`\n🚀 Claude Web Backend running on http://localhost:${PORT}`);
-  console.log(`📡 WebSocket server ready\n`);
+  logger.info(`\n🚀 Claude Web Backend running on http://localhost:${PORT}`);
+  logger.info(`📡 WebSocket server ready\n`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('\nShutting down...');
+  logger.info('\nShutting down...');
   claudeService.cleanup();
   process.exit(0);
 });
