@@ -14,6 +14,9 @@ const PORT = process.env.PORT || 3001;
 const app = express();
 const httpServer = createServer(app);
 
+// Disable ETag globally to prevent caching based on content hash
+app.set('etag', false);
+
 const io = new Server(httpServer, {
   cors: {
     origin: ['http://localhost:5173', 'http://localhost:3000'],
@@ -24,6 +27,14 @@ const io = new Server(httpServer, {
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Disable caching for API routes
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // REST API Routes
 app.use('/api/projects', projectRoutes);
@@ -279,8 +290,13 @@ app.use(express.static(frontendPath));
 // SPA Fallback for all non-API routes
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    logger.warn(`[Server] API route not found: ${req.method} ${req.path}`);
     return next();
   }
+  // Disable caching for index.html
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
