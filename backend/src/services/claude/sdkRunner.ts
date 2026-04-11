@@ -188,7 +188,12 @@ export async function runSDKQuery(
     subAgentActivities: [] as SubAgentActivity[],
   };
 
-  // Wrap prompt thành AsyncIterable — BẮT BUỘC khi dùng canUseTool
+  // Wrap prompt thành AsyncIterable — BẮT BUỘC khi dùng canUseTool.
+  // Generator PHẢI giữ mở (không return) cho đến khi nhận result hoặc bị abort.
+  // Nếu generator kết thúc quá sớm, SDK có thể đóng stdin CLI trước khi tool execution xong
+  // → mất khả năng canUseTool intercept.
+  // Nhưng nếu giữ mở vô thời hạn → SDK stream treo trên non-TTY (production).
+  // Giải pháp: chờ abort signal — abort được gọi ngay sau khi nhận result event.
   async function* createPromptStream() {
     yield {
       type: 'user' as const,
@@ -196,8 +201,12 @@ export async function runSDKQuery(
       message: { role: 'user' as const, content: message },
       parent_tool_use_id: null,
     };
-    // Cho phép generator kết thúc ở đây. 
-    // Nếu để await thêm promise thì SDK sẽ treo vì chờ tiếp input từ stdin.
+    // Giữ generator mở cho đến khi abort — cần thiết cho canUseTool hoạt động.
+    // Abort sẽ được trigger ngay khi nhận result event (xem case 'result' bên dưới).
+    await new Promise<void>((resolve) => {
+      if (abortController.signal.aborted) { resolve(); return; }
+      abortController.signal.addEventListener('abort', () => resolve(), { once: true });
+    });
   }
 
   try {
@@ -247,9 +256,14 @@ export async function runSDKQuery(
         }
 
         case 'result': {
-          // Nhận result → clear watchdog ngay, không cần chờ 90s
+          // Nhận result → clear watchdog, xử lý, rồi THOÁT loop ngay.
+          // QUAN TRỌNG: phải break khỏi for-await, không chỉ break khỏi switch.
+          // Trên production (non-TTY), SDK iterator có thể không tự kết thúc
+          // sau result event → for-await treo vĩnh viễn tại .next() call.
           if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
           handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, abortController);
+          // handleResultEvent đã gọi abort() → generator close → nhưng iterator
+          // vẫn có thể chờ .next(). Dùng break trực tiếp để thoát for-await loop.
           break;
         }
 
@@ -257,6 +271,13 @@ export async function runSDKQuery(
           emitter.emit('raw', { sessionId, event: sdkMsg });
           break;
         }
+      }
+
+      // Thoát for-await loop ngay sau khi xử lý result event.
+      // break bên trong switch chỉ thoát switch, không thoát for-await.
+      if (type === 'result') {
+        logger.info(`[Claude][${sessionId}] Breaking out of for-await loop after result event`);
+        break;
       }
     }
   } catch (err: any) {
