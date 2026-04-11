@@ -151,6 +151,11 @@ export function useChat(): UseChatReturn {
       setSessionId(data.sessionId);
       sessionIdRef.current = data.sessionId;
 
+      // Snapshot isProcessing TRƯỚC khi fetch — tránh race condition.
+      // await getMessages() mất 100-500ms. Trong thời gian đó chat:status idle
+      // có thể đã đến và set status='idle'. Không được ghi đè sau khi fetch xong.
+      const wasProcessing = data.state?.isProcessing ?? false;
+
       // Load messages gần nhất qua REST API thay vì nhận toàn bộ qua socket
       try {
         const result = await sessionsApi.getMessages(data.sessionId);
@@ -193,17 +198,27 @@ export function useChat(): UseChatReturn {
         setPendingPermission(null);
       }
 
-      if (!data.state?.isProcessing) {
+      if (!wasProcessing) {
+        // Session idle ngay từ đầu → reset hoàn toàn
         setStatus('idle');
         setProcessingStartedAt(null);
         streamingRef.current = '';
         setStreamingContent('');
         setStreamingBlocks([]);
       } else {
-        // Đang chờ permission cũng tính là 'tool_use' hoặc đang xử lý
-        setStatus(data.state?.pendingPermission ? 'tool_use' : 'thinking');
+        // Session đang xử lý khi session:started đến.
+        // Chỉ set 'thinking' nếu status hiện tại CHƯA là idle —
+        // tránh ghi đè chat:status idle đã nhận trong lúc await getMessages().
+        setStatus((current) => {
+          if (current === 'idle') {
+            // idle đã đến trong lúc fetch → giữ nguyên, không ghi đè
+            console.log('[useChat] session:started: idle already set during fetch, keeping idle');
+            return 'idle';
+          }
+          return data.state?.pendingPermission ? 'tool_use' : 'thinking';
+        });
         // Restore timestamp để timer không reset về 0 khi reload
-        setProcessingStartedAt(data.state?.processingStartedAt || Date.now());
+        setProcessingStartedAt((cur) => cur ?? data.state?.processingStartedAt ?? Date.now());
       }
 
       // Chuyển phiên hoàn tất — tắt overlay loading + clear safety timeout
