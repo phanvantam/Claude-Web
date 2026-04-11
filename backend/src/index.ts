@@ -67,13 +67,16 @@ io.on('connection', (socket) => {
       logger.info(`[Socket] session:start received: projectId=${data.projectId}, sessionId=${data.sessionId}, effortLevel=${data.effortLevel}`);
       const sessionId = await claudeService.startSession(data.projectId, data.sessionId, data.effortLevel);
 
-      // Leave any previous session rooms first
+      // Join room mới TRƯỚC — tránh khoảng hở miss event.
+      // Nếu leave trước rồi join sau: trong ~1 tick, socket không ở room nào
+      // → bỏ lỡ chat:message + chat:status idle emitted đúng lúc đó.
+      socket.join(sessionId);
+      // Leave các room cũ khác (không phải socket.id và không phải room mới)
       for (const room of socket.rooms) {
-        if (room !== socket.id) {
+        if (room !== socket.id && room !== sessionId) {
           socket.leave(room);
         }
       }
-      socket.join(sessionId);
 
       // Push current state (messages loaded from disk or memory)
       const state = claudeService.getSessionState(sessionId);
