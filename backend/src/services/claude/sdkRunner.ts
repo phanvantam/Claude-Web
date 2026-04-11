@@ -71,12 +71,13 @@ export async function runSDKQuery(
     input: Record<string, unknown>,
     { signal }: { signal: AbortSignal },
   ) => {
-    logger.info(`[Claude][${sessionId}] canUseTool called for: ${toolName}`);
+    const getElapsed = () => `${Date.now() - (state.processingStartedAt || Date.now())}ms`;
+    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] canUseTool called for: ${toolName}`);
     emitter.emit('status', { sessionId, status: 'tool_use', toolName });
 
     // AskUserQuestion — LUÔN chờ user trả lời, bất kể permission mode
     if (toolName === 'AskUserQuestion') {
-      logger.info(`[Claude][${sessionId}] AskUserQuestion detected, emitting askUser:question`);
+      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] AskUserQuestion detected, emitting askUser:question`);
       return new Promise<any>((resolve) => {
         if (signal.aborted) {
           return resolve({ behavior: 'deny', message: 'Đã hủy.' });
@@ -97,6 +98,7 @@ export async function runSDKQuery(
 
     // Mode không phải 'default' → auto allow cho các tool thông thường
     if (!isDefaultMode) {
+      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Auto-allowing tool: ${toolName}`);
       return { behavior: 'allow' as const, updatedInput: input };
     }
 
@@ -106,6 +108,7 @@ export async function runSDKQuery(
         return resolve({ behavior: 'deny', message: 'Đã hủy.' });
       }
 
+      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Requesting permission for: ${toolName}`);
       state.pendingPermission = { toolName, input, resolve };
       emitter.emit('permission:request', { sessionId, toolName, input });
 
@@ -309,7 +312,8 @@ function handleAssistantEvent(
   const apiMsg = sdkMsg.message;
   if (!apiMsg || !apiMsg.content) return;
 
-  logger.info(`[Claude][${sessionId}] assistant event (accumulated ${ctx.turnBlocks.length} blocks so far)`);
+  const elapsed = Date.now() - (state.processingStartedAt || Date.now());
+  logger.info(`[Claude][${sessionId}] [T+${elapsed}ms] assistant event: ${JSON.stringify(apiMsg)}`);
 
   // Lấy ID từ API event đầu tiên
   if (apiMsg.id && ctx.turnMsgId.startsWith('turn-')) ctx.turnMsgId = apiMsg.id;
