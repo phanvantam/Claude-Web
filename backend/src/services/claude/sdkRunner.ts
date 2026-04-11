@@ -196,10 +196,8 @@ export async function runSDKQuery(
       message: { role: 'user' as const, content: message },
       parent_tool_use_id: null,
     };
-    await new Promise<void>((resolve) => {
-      if (abortController.signal.aborted) { resolve(); return; }
-      abortController.signal.addEventListener('abort', () => resolve(), { once: true });
-    });
+    // Cho phép generator kết thúc ở đây. 
+    // Nếu để await thêm promise thì SDK sẽ treo vì chờ tiếp input từ stdin.
   }
 
   try {
