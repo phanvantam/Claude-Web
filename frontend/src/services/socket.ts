@@ -22,8 +22,11 @@ class SocketService {
     this.socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 500,         // bắt đầu retry sau 500ms
+      reconnectionDelayMax: 2000,     // tối đa 2s giữa mỗi lần retry (mặc định là 5s)
+      randomizationFactor: 0,         // tắt jitter để retry đúng lúc, không bị trễ ngẫu nhiên
+      timeout: 5000,                  // timeout kết nối 5s thay vì mặc định 20s
     });
 
     this.socket.on('connect', () => {

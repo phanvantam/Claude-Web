@@ -109,6 +109,8 @@ export function useChat(): UseChatReturn {
   const nextCursorRef = useRef<number | null>(null);
   // Track message IDs đã thấy — phân biệt new message vs update (tool result attached)
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  // Safety timer — tự reset status idle nếu chat:status không đến sau khi có message
+  const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const socket = socketService.connect();
@@ -226,6 +228,22 @@ export function useChat(): UseChatReturn {
           setStreamingBlocks([]);
           setStreamingContent('');
           streamingRef.current = '';
+
+          // Safety idle timer: nếu backend không emit chat:status idle trong 3s
+          // (ví dụ mạng bị gián đoạn), tự reset status để tránh UI treo "Đang xử lý"
+          if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = setTimeout(() => {
+            setStatus((cur) => {
+              if (cur !== 'idle') {
+                console.warn('[useChat] Safety idle timeout triggered — forcing status=idle');
+                setProcessingStartedAt(null);
+                setActiveSubAgent(null);
+                return 'idle';
+              }
+              return cur;
+            });
+            idleTimeoutRef.current = null;
+          }, 3000);
         }
       }
 
@@ -274,6 +292,11 @@ export function useChat(): UseChatReturn {
       // Lưu tên tool đang chạy — reset khi không phải tool_use
       setActiveToolName(data.status === 'tool_use' && data.toolName ? data.toolName : null);
       if (data.status === 'idle') {
+        // Nhận được idle thực → hủy safety timer nếu đang có
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         setStreamingBlocks([]);
         setStreamingContent('');
         streamingRef.current = '';
