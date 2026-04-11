@@ -9,6 +9,12 @@ import { SubAgentInfo, SubAgentEvent } from './types';
  * SDK cần biết đường dẫn tới binary claude để spawn nó bên dưới.
  */
 function resolveClaudeBinary(): string {
+  // Ưu tiên 1: Biến môi trường do người dùng cấu hình
+  if (process.env.CLAUDE_BIN_PATH && fs.existsSync(process.env.CLAUDE_BIN_PATH)) {
+    logger.info(`[ClaudeService] Using custom Claude CLI path from env: ${process.env.CLAUDE_BIN_PATH}`);
+    return process.env.CLAUDE_BIN_PATH;
+  }
+
   const home = os.homedir();
   const candidates = [
     path.join(home, '.local', 'bin', 'claude'),

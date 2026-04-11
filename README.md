@@ -90,15 +90,8 @@ Bạn có thể chạy server trực tiếp bằng lệnh:
 PORT=3001 npm start
 ```
 
-Hoặc sử dụng [PM2](https://pm2.keymetrics.io/) để quản lý process ổn định:
-
-```bash
-# Cài đặt pm2 nếu chưa có
-npm install -g pm2
-
-# Khởi chạy trong thư mục backend
-pm2 start "npm start" --name "claude-web"
-```
+# Sử dụng PM2 để quản lý process (Khuyến nghị cho Production)
+PORT=3001 CLAUDE_BIN_PATH=/path/to/claude pm2 start "npm start" --name "claude-web" --cwd ./backend
 
 Sau khi chạy, truy cập `http://localhost:3001` để bắt đầu sử dụng. Toàn bộ ứng dụng (cả front và back) sẽ được phục vụ chung trên một cổng duy nhất.
 
