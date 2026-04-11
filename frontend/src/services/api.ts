@@ -65,6 +65,14 @@ export const sessionsApi = {
   
   update: (id: string, data: Partial<ChatSession>) =>
     fetchJSON<{ success: true }>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  /** Lấy danh sách sub-agents đã chạy trong session */
+  listSubAgents: (sessionId: string) =>
+    fetchJSON<import('../types').SubAgentInfo[]>(`/sessions/${sessionId}/subagents`),
+
+  /** Lấy timeline events của một sub-agent cụ thể */
+  getSubAgentTimeline: (sessionId: string, agentId: string) =>
+    fetchJSON<import('../types').SubAgentTimelineEvent[]>(`/sessions/${sessionId}/subagents/${agentId}/timeline`),
 };
 
 // Claude CLI Metadata API
@@ -81,8 +89,11 @@ export interface ModelInfo {
 }
 
 export const claudeApi = {
-  /** Lấy danh sách slash commands (builtin + plugin) */
-  getCommands: () => fetchJSON<SlashCommand[]>('/claude/commands'),
+  /** Lấy danh sách slash commands (builtin + plugin + custom) */
+  getCommands: (projectId?: string) => {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    return fetchJSON<SlashCommand[]>(`/claude/commands${query}`);
+  },
   /** Lấy danh sách models khả dụng + model đang active */
   getModels: () => fetchJSON<{ models: ModelInfo[]; current: string }>('/claude/models'),
   /** Đọc nội dung raw của ~/.claude/settings.json */
@@ -121,6 +132,8 @@ export const claudeApi = {
     }),
   /** Lấy danh sách agent files */
   listAgents: () => fetchJSON<{ name: string; filename: string }[]>('/claude/agents'),
+  /** Lấy danh sách agents kèm description — dùng cho @mention autocomplete */
+  listAgentsWithDesc: () => fetchJSON<{ name: string; filename: string; description: string }[]>('/claude/agents/with-desc'),
   /** Đọc nội dung agent */
   getAgent: (filename: string) => fetchJSON<{ content: string }>(`/claude/agents/${filename}`),
   /** Cập nhật nội dung agent */
@@ -138,4 +151,38 @@ export const claudeApi = {
   /** Xóa agent */
   deleteAgent: (filename: string) =>
     fetchJSON<{ success: boolean }>(`/claude/agents/${filename}`, { method: 'DELETE' }),
+
+  // ── Custom Slash Commands ──
+
+  /** Liệt kê custom commands theo scope */
+  listCustomCommands: (scope: 'global' | 'project', projectId?: string) => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set('projectId', projectId);
+    return fetchJSON<{ filename: string; name: string; desc: string }[]>(
+      `/claude/commands/custom?${params.toString()}`,
+    );
+  },
+  /** Đọc nội dung custom command */
+  getCustomCommand: (filename: string, scope: 'global' | 'project', projectId?: string) => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set('projectId', projectId);
+    return fetchJSON<{ content: string }>(
+      `/claude/commands/custom/${encodeURIComponent(filename)}?${params.toString()}`,
+    );
+  },
+  /** Tạo hoặc cập nhật custom command */
+  saveCustomCommand: (filename: string, content: string, scope: 'global' | 'project', projectId?: string) =>
+    fetchJSON<{ success: boolean }>(`/claude/commands/custom/${encodeURIComponent(filename)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, scope, projectId }),
+    }),
+  /** Xóa custom command */
+  deleteCustomCommand: (filename: string, scope: 'global' | 'project', projectId?: string) => {
+    const params = new URLSearchParams({ scope });
+    if (projectId) params.set('projectId', projectId);
+    return fetchJSON<{ success: boolean }>(
+      `/claude/commands/custom/${encodeURIComponent(filename)}?${params.toString()}`,
+      { method: 'DELETE' },
+    );
+  },
 };

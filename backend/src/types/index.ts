@@ -65,10 +65,27 @@ export interface ClaudeResultMessage {
 // ============================
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+/** Một tool call nội bộ của sub-agent — dùng để hiển thị trong collapsible section */
+export interface SubAgentActivity {
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; tool: ToolCall }
-  | { type: 'thinking'; thinking: string };
+  | { type: 'thinking'; thinking: string }
+  | { 
+      type: 'subagent_result'; 
+      agentName: string; 
+      result: string; 
+      isError?: boolean; 
+      activities?: SubAgentActivity[];
+      usage?: { tokens: number; tools: number; durationMs: number };
+      agentId?: string;
+    };
 
 export interface ChatMessage {
   id: string;

@@ -153,30 +153,80 @@ function findCommandDirs(
   } catch { /* bỏ qua lỗi permission */ }
 }
 
+/**
+ * Scan custom slash commands từ một thư mục commands/.
+ * Mỗi file .md = 1 command, tên file = tên lệnh.
+ * Description lấy từ YAML frontmatter.
+ */
+function scanCustomCommandsInDir(dir: string, source: string): SlashCommand[] {
+  if (!fs.existsSync(dir)) return [];
+  const commands: SlashCommand[] = [];
+  try {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      if (!file.endsWith('.md') || file === 'CLAUDE.md') continue;
+      const cmdName = '/' + file.replace('.md', '');
+      const desc = parseDescription(path.join(dir, file));
+      commands.push({
+        cmd: cmdName,
+        desc: desc || file.replace('.md', ''),
+        source,
+      });
+    }
+  } catch { /* bỏ qua lỗi đọc thư mục */ }
+  return commands;
+}
+
+/**
+ * Scan custom commands cả 2 scope: global (~/.claude/commands/) và project (<path>/.claude/commands/).
+ */
+function scanCustomCommands(projectPath?: string): SlashCommand[] {
+  const globalDir = path.join(CLAUDE_HOME, 'commands');
+  const results = scanCustomCommandsInDir(globalDir, 'global');
+
+  if (projectPath) {
+    const projectDir = path.join(projectPath, '.claude', 'commands');
+    results.push(...scanCustomCommandsInDir(projectDir, 'project'));
+  }
+
+  return results;
+}
+
 // ============================
 // Public API
 // ============================
 
 /**
- * Lấy toàn bộ slash commands — builtin + plugin.
- * Loại trùng lặp theo cmd name (builtin ưu tiên).
+ * Lấy toàn bộ slash commands — builtin + plugin + custom (global + project).
+ * Loại trùng lặp theo cmd name (builtin > custom > plugin ưu tiên).
  */
-export function getAllCommands(): SlashCommand[] {
+export function getAllCommands(projectPath?: string): SlashCommand[] {
   const pluginCmds = scanPluginCommands();
+  const customCmds = scanCustomCommands(projectPath);
   const allCmds = [...BUILTIN_COMMANDS];
 
-  // Merge plugin commands, bỏ trùng với builtin
-  const builtinNames = new Set(BUILTIN_COMMANDS.map(c => c.cmd));
-  for (const cmd of pluginCmds) {
-    if (!builtinNames.has(cmd.cmd)) {
+  // Merge: custom commands trước (ưu tiên hơn plugin)
+  const seenNames = new Set(BUILTIN_COMMANDS.map(c => c.cmd));
+  for (const cmd of customCmds) {
+    if (!seenNames.has(cmd.cmd)) {
       allCmds.push(cmd);
+      seenNames.add(cmd.cmd);
+    }
+  }
+  // Merge plugin commands — ưu tiên thấp nhất
+  for (const cmd of pluginCmds) {
+    if (!seenNames.has(cmd.cmd)) {
+      allCmds.push(cmd);
+      seenNames.add(cmd.cmd);
     }
   }
 
-  // Sắp xếp: builtin trước, plugin sau, theo alphabet
+  // Sắp xếp: builtin trước, custom, plugin cuối, theo alphabet
+  const sourceOrder: Record<string, number> = { builtin: 0, project: 1, global: 2 };
   return allCmds.sort((a, b) => {
-    if (a.source === 'builtin' && b.source !== 'builtin') return -1;
-    if (a.source !== 'builtin' && b.source === 'builtin') return 1;
+    const oa = sourceOrder[a.source] ?? 3;
+    const ob = sourceOrder[b.source] ?? 3;
+    if (oa !== ob) return oa - ob;
     return a.cmd.localeCompare(b.cmd);
   });
 }
@@ -263,6 +313,24 @@ export function listAgents(): { name: string; filename: string }[] {
     return files.map(f => ({
       name: f.replace('.md', ''),
       filename: f,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Lấy danh sách agents kèm description (parsed từ YAML frontmatter).
+ * Dùng cho frontend @mention autocomplete — hiện tên + mô tả ngắn.
+ */
+export function listAgentsWithDescription(): { name: string; filename: string; description: string }[] {
+  try {
+    if (!fs.existsSync(AGENTS_DIR)) return [];
+    const files = fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md'));
+    return files.map(f => ({
+      name: f.replace('.md', ''),
+      filename: f,
+      description: parseDescription(path.join(AGENTS_DIR, f)),
     }));
   } catch {
     return [];
@@ -408,4 +476,87 @@ export function updateProjectMcpServers(projectPath: string, rawJson: string): v
   data.projects[projectPath].mcpServers = parsed;
 
   fs.writeFileSync(CLAUDE_JSON_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+// ============================
+// Custom Slash Commands — ~/.claude/commands/ + <project>/.claude/commands/
+// ============================
+
+/** Resolve đường dẫn thư mục commands theo scope */
+function resolveCommandsDir(scope: 'global' | 'project', projectPath?: string): string {
+  if (scope === 'project') {
+    if (!projectPath) throw new Error('projectPath bắt buộc khi scope = project');
+    return path.join(projectPath, '.claude', 'commands');
+  }
+  return path.join(CLAUDE_HOME, 'commands');
+}
+
+/**
+ * Liệt kê custom commands theo scope.
+ * Trả về danh sách file .md kèm description đã parse.
+ */
+export function listCustomCommands(
+  scope: 'global' | 'project',
+  projectPath?: string,
+): { filename: string; name: string; desc: string }[] {
+  const dir = resolveCommandsDir(scope, projectPath);
+  if (!fs.existsSync(dir)) return [];
+  try {
+    return fs.readdirSync(dir)
+      .filter(f => f.endsWith('.md') && f !== 'CLAUDE.md')
+      .map(f => ({
+        filename: f,
+        name: f.replace('.md', ''),
+        desc: parseDescription(path.join(dir, f)),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Đọc nội dung một custom command file.
+ */
+export function getCustomCommand(
+  scope: 'global' | 'project',
+  filename: string,
+  projectPath?: string,
+): string {
+  const dir = resolveCommandsDir(scope, projectPath);
+  const filePath = path.join(dir, filename);
+  if (!fs.existsSync(filePath)) throw new Error(`Command không tồn tại: ${filename}`);
+  return fs.readFileSync(filePath, 'utf-8');
+}
+
+/**
+ * Tạo hoặc cập nhật custom command file.
+ * Tự tạo thư mục nếu chưa có.
+ */
+export function saveCustomCommand(
+  scope: 'global' | 'project',
+  filename: string,
+  content: string,
+  projectPath?: string,
+): void {
+  const dir = resolveCommandsDir(scope, projectPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  // Đảm bảo filename kết thúc bằng .md
+  const safeName = filename.endsWith('.md') ? filename : `${filename}.md`;
+  fs.writeFileSync(path.join(dir, safeName), content, 'utf-8');
+}
+
+/**
+ * Xóa custom command file.
+ */
+export function deleteCustomCommand(
+  scope: 'global' | 'project',
+  filename: string,
+  projectPath?: string,
+): void {
+  const dir = resolveCommandsDir(scope, projectPath);
+  const filePath = path.join(dir, filename);
+  if (!fs.existsSync(filePath)) throw new Error(`Command không tồn tại: ${filename}`);
+  fs.unlinkSync(filePath);
 }

@@ -393,9 +393,9 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
           setEditingGlobal(false);
           setEditingProject(false);
         }}
-        width={420}
         className="mcp-drawer"
         styles={{
+          wrapper: { width: 420 },
           header: {
             background: 'rgba(22, 22, 38, 0.98)',
             borderBottom: '1px solid rgba(255,255,255,0.06)',

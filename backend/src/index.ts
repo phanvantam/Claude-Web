@@ -82,7 +82,8 @@ io.on('connection', (socket) => {
   });
 
   // Send a chat message
-  socket.on('chat:send', (data: { sessionId: string; message: string }) => {
+  // displayText: text hiển thị cho user (optional) — khác message gửi cho Claude khi @mention transform
+  socket.on('chat:send', (data: { sessionId: string; message: string; displayText?: string }) => {
     try {
       claudeService.sendMessage(data.sessionId, data.message);
 
@@ -90,7 +91,7 @@ io.on('connection', (socket) => {
       const userMsg = {
         id: `user-${Date.now()}`,
         role: 'user' as const,
-        content: data.message,
+        content: data.displayText || data.message,
         timestamp: new Date().toISOString(),
       };
       io.to(data.sessionId).emit('chat:message', {
@@ -155,6 +156,16 @@ io.on('connection', (socket) => {
   socket.on('permission:respond', (data: { sessionId: string; allowed: boolean }) => {
     try {
       claudeService.resolvePermission(data.sessionId, data.allowed);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+    }
+  });
+
+  // Phản hồi AskUserQuestion từ frontend (user trả lời câu hỏi)
+  socket.on('askUser:respond', (data: { sessionId: string; answer: string }) => {
+    try {
+      claudeService.resolveAskUser(data.sessionId, data.answer);
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : 'Unknown error';
       socket.emit('chat:error', { sessionId: data.sessionId, error });
@@ -244,6 +255,21 @@ claudeService.on('permission:request', (data) => {
   io.to(data.sessionId).emit('permission:request', data);
 });
 
+// Forward sub-agent started event — frontend hiện indicator trong timeline
+claudeService.on('subagent:started', (data) => {
+  io.to(data.sessionId).emit('subagent:started', data);
+});
+
+// Forward sub-agent ended event — frontend clear indicator + hiện result
+claudeService.on('subagent:ended', (data) => {
+  io.to(data.sessionId).emit('subagent:ended', data);
+});
+
+// Forward AskUserQuestion event — frontend hiện box hỏi đáp tương tác
+claudeService.on('askUser:question', (data) => {
+  io.to(data.sessionId).emit('askUser:question', data);
+});
+
 // =========================
 // Serve Frontend Static Files
 // =========================
@@ -266,7 +292,17 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   logger.info(`📡 WebSocket server ready\n`);
 });
 
-// Graceful shutdown
+// Graceful shutdown & Error handling
+process.on('uncaughtException', (err: any) => {
+  if (err.code === 'EPIPE') {
+    // EPIPE (Broken Pipe) thường xảy ra khi Claude CLI process bị đóng đột ngột
+    // hoặc socket bị ngắt kết nối trong khi đang ghi data. Có thể bỏ qua an toàn.
+    logger.warn('[Process] EPIPE error caught (Broken Pipe), ignoring...');
+    return;
+  }
+  logger.error('[Process] Uncaught Exception:', err);
+});
+
 process.on('SIGINT', () => {
   logger.info('\nShutting down...');
   claudeService.cleanup();

@@ -17,6 +17,34 @@ router.get('/active', (_req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * GET /api/sessions/:id/subagents — Danh sách sub-agents đã chạy trong session.
+ * Đọc từ filesystem: ~/.claude/projects/<encoded-cwd>/<sessionId>/subagents/
+ * Lưu ý: route cụ thể này phải đặt TRƯỚC /:id generic để Express match đúng.
+ */
+router.get('/:id/subagents', (req, res) => {
+  try {
+    const agents = claudeService.listSubAgents(req.params.id);
+    res.json(agents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/sessions/:id/subagents/:agentId/timeline — Timeline events của sub-agent.
+ * Parse file .jsonl để trích xuất thinking, tool_use, tool_result, text.
+ */
+router.get('/:id/subagents/:agentId/timeline', (req, res) => {
+  try {
+    const events = claudeService.getSubAgentTimeline(req.params.id, req.params.agentId);
+    res.json(events);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /**
  * GET /api/sessions — Lấy danh sách tất cả sessions (không kèm messages).
  */

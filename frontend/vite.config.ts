@@ -1,10 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // Cho phép Vite serve file từ thư mục node_modules/monaco-editor
   server: {
     port: 5173,
+    fs: {
+      allow: [
+        // Workspace root
+        path.resolve(__dirname, '..'),
+        // Monaco editor assets — cho phép serve trực tiếp từ node_modules
+        path.resolve(__dirname, 'node_modules/monaco-editor'),
+      ],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
@@ -29,3 +39,4 @@ export default defineConfig({
     },
   },
 })
+

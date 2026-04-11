@@ -42,7 +42,8 @@ const getToolIcon = (name: string) => {
     case 'WebFetch': return <GlobalOutlined />;
     case 'TodoWrite':
     case 'NotebookEdit': return <FormOutlined />;
-    case 'Task': return <ThunderboltOutlined />;
+    case 'Task':
+    case 'Agent': return <ThunderboltOutlined />;
     case 'TaskOutput': return <ExportOutlined />;
     case 'AskUserQuestion': return <QuestionCircleOutlined />;
     default: return <ToolOutlined />;
@@ -69,11 +70,69 @@ const getToolSummary = (toolCall: ToolCall): string => {
       return `${input.query || ''}`;
     case 'TodoWrite':
       return 'Update Todos';
+    case 'AskUserQuestion': {
+      // Trích xuất text câu hỏi từ input.questions[]  hoặc input.question
+      const questions = input.questions as Array<{ question?: string }> | undefined;
+      if (questions && Array.isArray(questions) && questions.length > 0) {
+        return questions[0].question || 'Câu hỏi từ Claude';
+      }
+      return String(input.question || 'Câu hỏi từ Claude');
+    }
+    case 'Agent':
+    case 'Task': {
+      // Sub-agent — hiện type + description
+      const agentType = input.subagent_type || input.agent_type || input.type || '';
+      const desc = input.description || '';
+      return [agentType, desc].filter(Boolean).join(': ') || 'Sub Agent';
+    }
     default:
       return Object.keys(input).length > 0
         ? Object.entries(input).slice(0, 2).map(([k, v]) => `${k}: ${String(v).slice(0, 40)}`).join(', ')
         : '';
   }
+};
+
+/** Trạng thái icon cho todo item */
+const getTodoStatusIcon = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return <CheckCircleOutlined style={{ color: '#51cf66', fontSize: 13 }} />;
+    case 'in_progress':
+      return <LoadingOutlined style={{ color: '#e17055', fontSize: 13 }} spin />;
+    default: // pending
+      return <span className="todo-pending-dot" />;
+  }
+};
+
+/** Render checklist cho TodoWrite — thay thế JSON thô */
+const TodoChecklist: React.FC<{ input: Record<string, unknown> }> = ({ input }) => {
+  const todos = (input.todos || input.items || []) as Array<{
+    content?: string;
+    activeForm?: string;
+    status?: string;
+  }>;
+
+  if (!Array.isArray(todos) || todos.length === 0) {
+    return <pre className="tl-tool-json">{JSON.stringify(input, null, 2)}</pre>;
+  }
+
+  return (
+    <div className="todo-checklist">
+      {todos.map((todo, i) => (
+        <div
+          key={i}
+          className={`todo-item ${todo.status === 'completed' ? 'done' : ''} ${todo.status === 'in_progress' ? 'active' : ''}`}
+        >
+          <span className="todo-status-icon">{getTodoStatusIcon(todo.status || 'pending')}</span>
+          <span className="todo-content">
+            {todo.status === 'in_progress' && todo.activeForm
+              ? todo.activeForm
+              : todo.content || ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = false }) => {
@@ -83,9 +142,10 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
   const isDone = hasResult || isFinalized;
   const isError = toolCall.isError;
   const isRunning = !isDone;
+  const isTodoWrite = toolCall.name === 'TodoWrite';
 
-  // Mặc định collapse — user click để mở xem chi tiết
-  const [expanded, setExpanded] = useState(false);
+  // TodoWrite: mặc định mở — hiệu quả hơn vì user muốn thấy checklist ngay
+  const [expanded, setExpanded] = useState(isTodoWrite);
   const summary = getToolSummary(toolCall);
 
   return (
@@ -110,8 +170,14 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
       {expanded && (
         <div className="tl-tool-details">
           <div className="tl-tool-section">
-            <span className="tl-tool-label">INPUT</span>
-            <pre className="tl-tool-json">{JSON.stringify(toolCall.input, null, 2)}</pre>
+            {isTodoWrite ? (
+              <TodoChecklist input={toolCall.input} />
+            ) : (
+              <>
+                <span className="tl-tool-label">INPUT</span>
+                <pre className="tl-tool-json">{JSON.stringify(toolCall.input, null, 2)}</pre>
+              </>
+            )}
           </div>
           {toolCall.result !== undefined && (
             <div className="tl-tool-section">

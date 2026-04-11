@@ -117,12 +117,12 @@ const Dashboard: React.FC = () => {
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+        <Col xs={24} sm={8}>
           <Card className="stat-card">
             <Statistic
               title={<span style={{ color: 'rgba(255,255,255,0.5)' }}>Tổng dự án</span>}
               value={projects.length}
-              valueStyle={{ color: '#6c5ce7' }}
+              styles={{ content: { color: '#6c5ce7' } }}
               prefix={<FolderOpenOutlined />}
             />
           </Card>

@@ -9,6 +9,25 @@ export interface PendingPermission {
   input: Record<string, unknown>;
 }
 
+/** Một câu hỏi trong AskUserQuestion tool */
+export interface AskUserQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface AskUserQuestionItem {
+  header?: string;
+  question: string;
+  options?: AskUserQuestionOption[];
+  multiSelect?: boolean;
+}
+
+/** AskUserQuestion tool đang chờ user trả lời */
+export interface PendingAskUser {
+  questions: AskUserQuestionItem[];
+  metadata?: Record<string, unknown>;
+}
+
 interface UseChatReturn {
   messages: ChatMessage[];
   streamingContent: string;
@@ -26,7 +45,7 @@ interface UseChatReturn {
   /** Đang tải messages cũ hơn không */
   isLoadingMore: boolean;
   startSession: (projectId: string, existingSessionId?: string) => void;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, displayText?: string) => void;
   abortGeneration: () => void;
   stopSession: () => void;
   clearMessages: () => void;
@@ -50,8 +69,14 @@ interface UseChatReturn {
   pendingPermission: PendingPermission | null;
   /** Phản hồi permission request: true = allow, false = deny */
   respondPermission: (allowed: boolean) => void;
+  /** AskUserQuestion đang chờ user trả lời (null nếu không có) */
+  pendingAskUser: PendingAskUser | null;
+  /** Phản hồi AskUserQuestion: gửi câu trả lời text */
+  respondAskUser: (answer: string) => void;
   /** Đang chuyển phiên (loading overlay) */
   isSwitchingSession: boolean;
+  /** Sub-agent đang chạy (null nếu không có) */
+  activeSubAgent: { name: string; prompt: string } | null;
 }
 
 export function useChat(): UseChatReturn {
@@ -72,6 +97,9 @@ export function useChat(): UseChatReturn {
   const [sessionPermissionMode, setSessionPermissionModeState] = useState<string | undefined>();
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const [isSwitchingSession, setIsSwitchingSession] = useState(false);
+  /** Sub-agent đang chạy — hiển indicator trong timeline */
+  const [activeSubAgent, setActiveSubAgent] = useState<{ name: string; prompt: string } | null>(null);
+  const [pendingAskUser, setPendingAskUser] = useState<PendingAskUser | null>(null);
   const streamingRef = useRef('');
   // Giữ ref session ID để reconnect handler luôn có giá trị mới nhất
   const sessionIdRef = useRef<string | null>(null);
@@ -103,7 +131,7 @@ export function useChat(): UseChatReturn {
     });
 
     // Session started hoặc attached — load messages gần nhất qua REST
-    socket.on('session:started', async (data: { sessionId: string; state?: { messages: ChatMessage[]; isProcessing: boolean; model?: string; effortLevel?: string; permissionMode?: string; pendingPermission?: PendingPermission } }) => {
+    socket.on('session:started', async (data: { sessionId: string; state?: { messages: ChatMessage[]; isProcessing: boolean; model?: string; effortLevel?: string; permissionMode?: string; pendingPermission?: PendingPermission; processingStartedAt?: number } }) => {
       // Nếu đang chờ kết nối phiên cụ thể → chỉ chấp nhận đúng phiên đó
       if (pendingSessionIdRef.current && pendingSessionIdRef.current !== data.sessionId) {
         console.log(`[useChat] Ignoring session:started for ${data.sessionId} (pending: ${pendingSessionIdRef.current})`);
@@ -250,6 +278,8 @@ export function useChat(): UseChatReturn {
         setStreamingContent('');
         streamingRef.current = '';
         setProcessingStartedAt(null);
+        // Reset sub-agent indicator khi turn kết thúc
+        setActiveSubAgent(null);
       } else if (data.startedAt) {
         // Cập nhật startedAt từ server (nếu có)
         setProcessingStartedAt(data.startedAt);
@@ -288,6 +318,28 @@ export function useChat(): UseChatReturn {
       setPendingPermission({ toolName: data.toolName, input: data.input });
     });
 
+    // Sub-agent started — Claude gọi tool task() để dispatch sub-agent
+    socket.on('subagent:started', (data: { sessionId: string; agentName: string; prompt: string }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      setActiveSubAgent({ name: data.agentName, prompt: data.prompt });
+    });
+
+    // Sub-agent ended — kết quả đã nhận, clear indicator
+    socket.on('subagent:ended', (data: { sessionId: string }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      setActiveSubAgent(null);
+    });
+
+    // AskUserQuestion — Claude muốn hỏi user qua tool tương tác
+    socket.on('askUser:question', (data: { sessionId: string; input: Record<string, unknown> }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      const input = data.input || {};
+      setPendingAskUser({
+        questions: (input.questions as AskUserQuestionItem[]) || [{ question: String(input.question || 'Claude muốn hỏi bạn'), options: input.options as AskUserQuestionOption[] }],
+        metadata: input.metadata as Record<string, unknown>,
+      });
+    });
+
     // Session compacted — chuyển sang session mới sau khi nén context
     socket.on('session:compacted', (data: { oldSessionId: string; newSessionId: string; state?: any }) => {
       if (data.oldSessionId !== sessionIdRef.current) return;
@@ -324,6 +376,9 @@ export function useChat(): UseChatReturn {
       socket.off('session:effortChanged');
       socket.off('session:permissionModeChanged');
       socket.off('permission:request');
+      socket.off('subagent:started');
+      socket.off('subagent:ended');
+      socket.off('askUser:question');
       socket.off('session:ended');
       socket.off('session:compacted');
       // Giảm refCount — socket chỉ thực sự disconnect khi hết consumer
@@ -360,10 +415,14 @@ export function useChat(): UseChatReturn {
     socket?.emit('session:start', { projectId, sessionId: existingSessionId });
   }, []);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, displayText?: string) => {
     if (!sessionIdRef.current) return;
     const socket = socketService.getSocket();
-    socket?.emit('chat:send', { sessionId: sessionIdRef.current, message: text });
+    socket?.emit('chat:send', {
+      sessionId: sessionIdRef.current,
+      message: text,
+      ...(displayText ? { displayText } : {}),
+    });
   }, []);
 
   const abortGeneration = useCallback(() => {
@@ -480,6 +539,18 @@ export function useChat(): UseChatReturn {
     socket?.emit('permission:respond', { sessionId: sid, allowed });
   }, []);
 
+  /**
+   * Phản hồi AskUserQuestion: gửi câu trả lời text về backend.
+   * Backend resolve canUseTool → Claude nhận answer và tiếp tục.
+   */
+  const respondAskUser = useCallback((answer: string) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    setPendingAskUser(null);
+    const socket = socketService.getSocket();
+    socket?.emit('askUser:respond', { sessionId: sid, answer });
+  }, []);
+
   return {
     messages,
     streamingContent,
@@ -507,6 +578,9 @@ export function useChat(): UseChatReturn {
     setSessionPermissionMode,
     pendingPermission,
     respondPermission,
+    pendingAskUser,
+    respondAskUser,
     isSwitchingSession,
+    activeSubAgent,
   };
 }

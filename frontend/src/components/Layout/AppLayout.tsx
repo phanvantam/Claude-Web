@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Layout, Menu, Typography, Button, Tooltip } from 'antd';
+import { Layout, Menu, Typography, Button, Tooltip, Drawer } from 'antd';
 import {
   MessageOutlined,
   SettingOutlined,
@@ -8,8 +8,10 @@ import {
   ProjectOutlined,
   PlusOutlined,
   MenuFoldOutlined,
+  MenuUnfoldOutlined,
   SyncOutlined,
   CheckCircleFilled,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { sessionsApi, projectsApi } from '../../services/api';
@@ -20,6 +22,9 @@ import type { ChatSession, Project } from '../../types';
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
+/** Breakpoint mobile — giữ đồng bộ với CSS @media */
+const MOBILE_BREAKPOINT = 768;
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -28,9 +33,25 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  /** Drawer sidebar trên mobile — chỉ dùng khi viewport nhỏ */
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { isProcessing, isUnread } = useSessionsStatus();
+
+  // Để viewport thay đổi, vd: xoay màn hình
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Tự đóng drawer khi navigate
+  useEffect(() => {
+    if (isMobile) setMobileDrawerOpen(false);
+  }, [location.pathname, location.search, isMobile]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -107,7 +128,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       key: `proj-${proj.id}`,
       icon: hasProcessing
         ? <SyncOutlined spin style={{ color: '#fdcb6e' }} />
-        : <ProjectOutlined />,
+        : projSessions.length > 0
+          ? (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 18,
+              height: 18,
+              borderRadius: 4,
+              background: 'rgba(108,92,231,0.25)',
+              color: 'rgba(108,92,231,1)',
+              fontSize: 11,
+              fontWeight: 600,
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1,
+            }}>
+              {projSessions.length}
+            </span>
+          )
+          : <ProjectOutlined />,
       label: proj.name,
       children: [
         {
@@ -147,6 +187,125 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     };
   });
 
+  /** Bottom menu — dùng chung cho PC và mobile */
+  const bottomMenuItems = [
+    {
+      key: 'du-an',
+      icon: <FolderOpenOutlined />,
+      label: 'Dự án',
+      onClick: () => navigate('/'),
+    },
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: 'Cài đặt',
+      onClick: () => navigate('/settings'),
+    }
+  ];
+
+  /** Sidebar content — render 1 lần, dùng cho cả Sider (PC) và Drawer (mobile) */
+  const sidebarContent = (
+    <>
+      <div style={{ padding: '12px 0', paddingBottom: 140, height: 'calc(100vh - 64px)', overflowY: 'auto', flex: 1 }}>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname + location.search]}
+          defaultOpenKeys={projects.map(p => `proj-${p.id}`)}
+          items={menuItems}
+          style={{
+            background: 'transparent',
+            borderRight: 'none',
+          }}
+        />
+      </div>
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        width: '100%',
+        padding: '8px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(18, 18, 28, 0.95)',
+        backdropFilter: 'blur(8px)',
+      }}>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectable={false}
+          items={bottomMenuItems}
+          style={{ background: 'transparent' }}
+        />
+      </div>
+    </>
+  );
+
+  // ── MOBILE: Drawer + hamburger trên header ──
+  if (isMobile) {
+    return (
+      <Layout style={{ minHeight: '100vh' }}>
+        {/* Mobile header bar — chứa hamburger + logo */}
+        <div className="mobile-header">
+          <Button
+            type="text"
+            icon={<MenuUnfoldOutlined />}
+            onClick={() => setMobileDrawerOpen(true)}
+            className="mobile-hamburger"
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ThunderboltOutlined style={{ fontSize: 20, color: '#6c5ce7' }} />
+            <Text strong style={{ color: '#fff', fontSize: 15, letterSpacing: 1 }}>
+              Claude Web
+            </Text>
+          </div>
+          {/* Spacer để logo nằm giữa */}
+          <div style={{ width: 32 }} />
+        </div>
+
+        {/* Drawer sidebar — trượt từ trái */}
+        <Drawer
+          placement="left"
+          open={mobileDrawerOpen}
+          onClose={() => setMobileDrawerOpen(false)}
+          closeIcon={<CloseOutlined style={{ color: 'rgba(255,255,255,0.5)' }} />}
+          styles={{
+            wrapper: { width: 280 },
+            header: {
+              background: 'linear-gradient(180deg, #0a0a0f 0%, #12121a 100%)',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              padding: '16px',
+            },
+            body: {
+              background: 'linear-gradient(180deg, #0a0a0f 0%, #12121a 100%)',
+              padding: 0,
+              position: 'relative',
+              overflow: 'hidden',
+            },
+          }}
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ThunderboltOutlined style={{ fontSize: 20, color: '#6c5ce7' }} />
+              <Text strong style={{ color: '#fff', fontSize: 15, letterSpacing: 1 }}>
+                Claude Web
+              </Text>
+            </div>
+          }
+        >
+          {sidebarContent}
+        </Drawer>
+
+        <Content
+          style={{
+            background: '#0f0f17',
+            minHeight: 'calc(100vh - 48px)',
+          }}
+        >
+          {children}
+        </Content>
+      </Layout>
+    );
+  }
+
+  // ── DESKTOP: Sider cố định bên trái ──
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
@@ -202,49 +361,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             />
           )}
         </div>
-        <div style={{ padding: '12px 0', paddingBottom: 140, height: 'calc(100vh - 64px)', overflowY: 'auto', flex: 1 }}>
-          <Menu
-            theme="dark"
-            mode="inline"
-            selectedKeys={[location.pathname + location.search]}
-            defaultOpenKeys={projects.map(p => `proj-${p.id}`)}
-            items={menuItems}
-            style={{
-              background: 'transparent',
-              borderRight: 'none',
-            }}
-          />
-        </div>
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          width: '100%',
-          padding: '8px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(18, 18, 28, 0.95)',
-          backdropFilter: 'blur(8px)',
-        }}>
-          <Menu
-            theme="dark"
-            mode="inline"
-            selectable={false}
-            items={[
-              {
-                key: 'du-an',
-                icon: <FolderOpenOutlined />,
-                label: 'Dự án',
-                onClick: () => navigate('/'),
-              },
-              {
-                key: 'settings',
-                icon: <SettingOutlined />,
-                label: 'Cài đặt',
-                onClick: () => navigate('/settings'),
-              }
-            ]}
-            style={{ background: 'transparent' }}
-          />
-        </div>
+        {sidebarContent}
       </Sider>
       <Layout>
         <Content

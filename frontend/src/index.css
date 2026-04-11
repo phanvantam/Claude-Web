@@ -185,6 +185,7 @@ body {
     opacity: 0;
     backdrop-filter: blur(0);
   }
+
   to {
     opacity: 1;
     backdrop-filter: blur(6px);
@@ -294,17 +295,59 @@ body {
    TIMELINE: SYSTEM ROW
    ======================================== */
 .tl-system-row {
-  text-align: center;
-  padding: 6px 0;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
   animation: messageSlideIn 0.2s ease-out;
 }
 
-.tl-system-text {
-  color: var(--text-muted);
+.tl-system-content {
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 2px 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  max-width: 85%;
+  text-align: left;
+  position: relative;
+}
+
+.tl-system-icon-wrapper {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 16px;
+  color: var(--accent);
+  opacity: 0.5;
+}
+
+.tl-system-content h1,
+.tl-system-content h2,
+.tl-system-content h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 24px;
+  /* Tránh đè lên icon tuyệt đối */
+}
+
+.tl-system-content .markdown-body table {
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 4px 14px;
-  border-radius: 20px;
+  margin: 4px 0;
+}
+
+.tl-system-content .markdown-body p {
+  margin-bottom: 4px;
+}
+
+/* Đổi màu xanh cho giá trị Chi phí trong bảng thống kê */
+.tl-system-content table tr:nth-child(5) td:last-child strong {
+  color: var(--success);
 }
 
 /* ========================================
@@ -434,8 +477,13 @@ body {
 }
 
 @keyframes dotSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes dotPulse {
@@ -575,8 +623,75 @@ body {
 }
 
 @keyframes toolRunPulse {
-  0%, 100% { border-left-color: rgba(225, 112, 85, 0.2); }
-  50% { border-left-color: rgba(225, 112, 85, 0.6); }
+
+  0%,
+  100% {
+    border-left-color: rgba(225, 112, 85, 0.2);
+  }
+
+  50% {
+    border-left-color: rgba(225, 112, 85, 0.6);
+  }
+}
+
+/* === TodoWrite Checklist === */
+.todo-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.todo-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.todo-status-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.todo-pending-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+
+.todo-content {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+}
+
+/* Item đang chạy — text cam, nhấp nháy nhẹ */
+.todo-item.active {
+  background: rgba(225, 112, 85, 0.06);
+}
+
+.todo-item.active .todo-content {
+  color: #e17055;
+}
+
+/* Item hoàn thành — gạch ngang, nhạt */
+.todo-item.done .todo-content {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.35);
 }
 
 /* Nút hủy trong tool details */
@@ -969,6 +1084,113 @@ body {
   border-color: rgba(108, 92, 231, 0.5);
 }
 
+.permission-btn-allow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === AskUserQuestion panel — câu hỏi tương tác từ Claude === */
+.ask-user-panel {
+  border-color: rgba(108, 92, 231, 0.3);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(108, 92, 231, 0.1);
+}
+
+.ask-user-panel .permission-panel-icon {
+  color: var(--accent);
+}
+
+.ask-user-panel .permission-panel-title {
+  color: var(--accent-light);
+}
+
+.ask-user-question-block {
+  padding: 10px 14px;
+}
+
+.ask-user-question-block+.ask-user-question-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ask-user-question-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 6px 0 10px;
+  line-height: 1.5;
+}
+
+/* Options mode — danh sách button chọn */
+.ask-user-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-user-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.ask-user-option-btn:hover {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.ask-user-option-btn:active {
+  transform: scale(0.98);
+}
+
+.ask-user-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+}
+
+.ask-user-option-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+}
+
+/* Free text mode — textarea nhập tự do */
+.ask-user-text-input {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ask-user-textarea {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.ask-user-textarea:focus {
+  border-color: var(--accent);
+}
+
+.ask-user-textarea::placeholder {
+  color: var(--text-muted);
+}
+
 /* === Slash command popup === */
 .slash-menu {
   position: absolute;
@@ -1025,6 +1247,27 @@ body {
   color: var(--text-secondary);
   flex: 1;
   min-width: 0;
+}
+
+/* Agent desc: truncate 1 dòng — nội dung đầy đủ hiện qua icon ? */
+.slash-desc-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon ? hiện full agent description khi hover/tap */
+.agent-desc-help {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  padding-left: 6px;
+  transition: color 0.2s ease;
+}
+
+.agent-desc-help:hover {
+  color: var(--accent-light);
 }
 
 /* Tag nguồn gốc plugin */
@@ -1208,6 +1451,15 @@ body {
 
 .dark-modal .ant-modal-title {
   color: var(--text-primary) !important;
+}
+
+.dark-modal .ant-modal-close {
+  color: var(--text-secondary) !important;
+}
+
+.dark-modal .ant-modal-close:hover {
+  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* ========================================
@@ -1426,6 +1678,172 @@ body {
 }
 
 /* ========================================
+   SKILL DRAWER — Custom Slash Commands
+   ======================================== */
+
+/* Command card */
+.skill-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.skill-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.skill-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skill-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-light);
+  font-family: 'JetBrains Mono', monospace;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-card-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.skill-action-btn {
+  color: rgba(255, 255, 255, 0.25) !important;
+  font-size: 12px !important;
+}
+
+.skill-action-btn:hover {
+  color: var(--accent-light) !important;
+}
+
+.skill-action-btn-danger:hover {
+  color: #ff6b6b !important;
+}
+
+/* Tab header */
+.skill-tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.skill-tab-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.skill-add-btn {
+  color: var(--accent) !important;
+  font-size: 11px !important;
+}
+
+.skill-add-btn:hover {
+  color: var(--accent-light) !important;
+}
+
+/* Editor view */
+.skill-editor {
+  padding-top: 8px;
+}
+
+.skill-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.skill-editor-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.skill-editor-scope {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.skill-name-input .ant-input {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-primary) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+}
+
+.skill-name-input .ant-input-group-addon {
+  background: rgba(108, 92, 231, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: var(--accent-light) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+}
+
+.skill-editor-textarea textarea {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  color: var(--text-primary) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+.skill-editor-textarea textarea:focus {
+  border-color: rgba(108, 92, 231, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.1) !important;
+}
+
+.skill-editor-textarea textarea::placeholder {
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+}
+
+.skill-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ========================================
    ANTD OVERRIDES
    ======================================== */
 .ant-layout-sider-trigger {
@@ -1494,27 +1912,696 @@ body {
 }
 
 /* ========================================
-   RESPONSIVE
+   RESPONSIVE — MOBILE (≤768px)
+   Quy tắc: chỉ override từng phần cần thiết,
+   giữ nguyên toàn bộ desktop styles phía trên.
    ======================================== */
+
+/* ── Mobile header bar — hiện trên mobile thay cho Sider ── */
+.mobile-header {
+  display: none;
+  /* Ẩn trên desktop */
+}
+
+.mobile-hamburger {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 20px !important;
+}
+
 @media (max-width: 768px) {
+
+  /* ── Mobile header bar ── */
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+    padding: 0 12px;
+    background: linear-gradient(180deg, #0a0a0f 0%, #12121a 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  /* ── Page container ── */
   .page-container {
-    padding: 16px;
+    padding: 12px;
   }
 
   .page-header {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
   }
 
-  .message-row {
-    max-width: 95%;
+  /* ── Chat page fullscreen ── */
+  .chat-page {
+    height: calc(100vh - 48px);
+    /* Trừ mobile header */
+    min-height: calc(100vh - 48px);
   }
 
+  /* ── Chat header — thu gọn ── */
   .chat-header {
-    padding: 8px 12px;
+    padding: 6px 10px;
+    min-height: 36px;
   }
 
-  .input-box-wrapper {
-    padding: 8px 12px 12px;
+  .chat-header-left {
+    max-width: 55%;
+    padding: 3px 6px;
   }
+
+  .chat-header-path {
+    font-size: 11px;
+  }
+
+  /* ── Chat window — bớt padding ── */
+  .chat-window {
+    padding: 12px 10px;
+    padding-bottom: 8px;
+  }
+
+  /* ── User bubble — full width ── */
+  .tl-user-bubble {
+    font-size: 13px;
+    padding: 5px 10px;
+  }
+
+  /* ── Assistant timeline — thu hẹp line col ── */
+  .tl-line-col {
+    width: 22px;
+  }
+
+  .tl-dot {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    left: -19px;
+    top: 4px;
+  }
+
+  .tl-block-content {
+    font-size: 12.5px;
+    padding: 0 0 4px 0;
+  }
+
+  /* ── Tool items — compact ── */
+  .tl-tool-header {
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .tl-tool-name {
+    font-size: 12px;
+  }
+
+  .tl-tool-summary {
+    font-size: 11px;
+  }
+
+  /* ── Tool details expanded — chiếm trọn width trên mobile ── */
+  .tl-tool-details {
+    padding-left: 0 !important;
+    border-left: none !important;
+    margin-top: 6px;
+    /* Dịch chuyển sang trái để bù lề của timeline col nếu cần, 
+       nhưng an toàn nhất là bám sát content-col */
+    width: 100%;
+  }
+
+  .tl-tool-section {
+    padding-left: 0 !important;
+    margin-bottom: 2px !important;
+    width: 100%;
+  }
+
+  .tl-tool-json {
+    font-size: 10.5px !important;
+    padding: 8px !important;
+    max-height: 300px !important;
+    /* Tăng chiều cao vì đã full width */
+    border-radius: 6px;
+    margin: 0 !important;
+    width: 100% !important;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Viền mờ để rõ khối */
+  }
+
+  /* ── Meta info — wrap ── */
+  .tl-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 3px 0 2px 2px;
+  }
+
+  /* ── Input box wrapper — mỏng hơn ── */
+  .input-box-wrapper {
+    padding: 4px 8px 6px;
+  }
+
+  /* ── Toolbar — cuộn ngang nếu nhiều nút ── */
+  .input-toolbar {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    gap: 3px;
+    padding: 0 2px 4px;
+  }
+
+  .input-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbar-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── Input box ── */
+  .input-box {
+    padding: 6px 10px;
+    border-radius: 12px;
+    gap: 6px;
+  }
+
+  .chat-textarea {
+    font-size: 14px;
+    /* Giữ 14px tránh iOS zoom */
+    min-height: 22px;
+    max-height: 120px;
+  }
+
+  /* ── Permission panel — thu gọn ── */
+  .permission-panel {
+    margin-bottom: 4px;
+    border-radius: 10px;
+  }
+
+  .permission-panel-header {
+    padding: 8px 10px 6px;
+  }
+
+  .permission-panel-body {
+    padding: 8px 10px;
+  }
+
+  .permission-panel-code {
+    font-size: 10px;
+    max-height: 120px;
+    padding: 8px;
+  }
+
+  .permission-panel-actions {
+    padding: 6px 10px 8px;
+    gap: 6px;
+  }
+
+  .permission-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  /* ── Slash menu ── */
+  .slash-menu {
+    left: 8px;
+    right: 8px;
+    max-height: 220px;
+  }
+
+  .slash-cmd {
+    font-size: 12px;
+    min-width: 80px;
+  }
+
+  .slash-desc {
+    font-size: 11px;
+  }
+
+  /* ── Markdown ── */
+  .code-block {
+    padding: 10px;
+    font-size: 11.5px;
+    border-radius: 8px;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    padding-left: 16px;
+  }
+
+  /* ── Thinking text ── */
+  .thinking-text {
+    font-size: 11.5px;
+  }
+
+  /* ── Sub-agent result card — fix vỡ layout trên mobile ── */
+  .tl-subagent-result-card {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .subagent-result-header {
+    padding: 6px 10px;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  /* Usage chips xuống dòng riêng — tránh đẩy header tràn */
+  .subagent-usage-chips {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 4px;
+    gap: 4px;
+    padding-right: 0;
+    flex-wrap: wrap;
+  }
+
+  .subagent-usage-chips span {
+    font-size: 9px;
+    padding: 0 4px;
+  }
+
+  /* Ẩn agent ID chip trên mobile — quá dài, không cần thiết */
+  .subagent-usage-chips .agent-id-chip {
+    display: none;
+  }
+
+  /* Activities list compact */
+  .subagent-activities-list {
+    padding: 6px 10px;
+    max-height: 150px;
+  }
+
+  /* Activity item — stack dọc khi quá hẹp */
+  .subagent-activity-item {
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 6px 0;
+  }
+
+  .subagent-activity-summary {
+    width: 100%;
+    font-size: 11px;
+    word-break: break-all;
+    /* Fix tràn text */
+    background: rgba(0, 0, 0, 0.15);
+    padding: 4px 6px;
+    border-radius: 4px;
+    margin-top: 2px;
+    color: var(--text-secondary);
+  }
+
+  .subagent-result-body {
+    padding: 10px;
+  }
+
+  /* Subagent indicator nhỏ hơn */
+  .tl-subagent-indicator {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .tl-subagent-name {
+    font-size: 11px;
+  }
+
+  /* ── Sub-agent timeline modal — fullscreen trên mobile ── */
+  .dark-modal .ant-modal {
+    max-width: 100vw;
+    margin: 0;
+    padding: 0;
+  }
+
+  .dark-modal .ant-modal-content {
+    border-radius: 0 !important;
+    min-height: 100vh;
+  }
+
+  .dark-modal .ant-modal-body {
+    max-height: calc(100vh - 48px) !important;
+    padding: 6px 8px !important;
+  }
+
+  .dark-modal .ant-modal-header {
+    padding: 10px 12px !important;
+  }
+
+  .sa-tl-row {
+    gap: 8px;
+    min-height: 40px;
+  }
+
+  .sa-tl-content {
+    padding-bottom: 10px;
+  }
+
+  .sa-tl-header {
+    padding-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .sa-tl-body {
+    font-size: 12px;
+  }
+
+  /* ── Settings page — stack layout ── */
+  .settings-tabs .ant-tabs-nav {
+    margin-bottom: 8px !important;
+  }
+
+  /* ── Session switch overlay ── */
+  .session-switch-overlay {
+    z-index: 200;
+    /* Trên cả mobile header */
+  }
+
+  /* ── Ant Design overrides cho mobile ── */
+  .ant-drawer-body .ant-menu-inline {
+    border-right: none !important;
+  }
+
+  /* Project cards — 1 cột trên mobile */
+  .ant-row {
+    gap: 0 !important;
+  }
+
+  /* ── Toolbar dropdown full-width trên mobile ── */
+  /* overlayStyle set width/left, CSS này set min-width + item padding */
+  .toolbar-dropdown {
+    min-width: 100vw !important;
+    border-radius: 0 !important;
+  }
+
+  .toolbar-dropdown .ant-dropdown-menu {
+    border-radius: 0 !important;
+    padding: 6px 0 !important;
+  }
+
+  .toolbar-dropdown .ant-dropdown-menu-item {
+    padding: 12px 20px !important;
+    font-size: 14px !important;
+  }
+
+  /* model-menu-item bên trong — tăng size cho dễ đọc/tap */
+  .toolbar-dropdown .model-menu-name {
+    font-size: 14px !important;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Mô tả: 1 dòng + ellipsis — nội dung đầy đủ xem qua dấu ? */
+  .toolbar-dropdown .model-menu-desc {
+    font-size: 12px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    /* Bắt buộc để ellipsis hoạt động trong flexbox */
+  }
+
+  /* Đảm bảo container không bị wrap */
+  .toolbar-dropdown .model-menu-item {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+}
+
+/* ========================================
+   SUB-AGENT USAGE CHIPS (RESTORED)
+   ======================================== */
+.subagent-usage-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+.subagent-usage-chips span {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-id-chip {
+  color: var(--accent) !important;
+  background: rgba(108, 92, 231, 0.1) !important;
+  border: 1px solid rgba(108, 92, 231, 0.1);
+}
+
+/* ========================================
+   SUB-AGENT RESULT & TIMELINE
+   ======================================== */
+.tl-subagent-result-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+
+.tl-subagent-result-card.success {
+  border-color: rgba(81, 207, 102, 0.2);
+}
+
+.tl-subagent-result-card.error {
+  border-color: rgba(255, 107, 107, 0.2);
+}
+
+.subagent-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.subagent-result-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subagent-result-icon {
+  display: flex;
+  align-items: center;
+}
+
+.subagent-result-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.subagent-result-toggle {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.subagent-activities-list {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.subagent-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.subagent-activity-item:last-child {
+  border-bottom: none;
+}
+
+.subagent-activity-status {
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.subagent-activity-status.done {
+  color: var(--success);
+}
+
+.subagent-activity-status.error {
+  color: var(--danger);
+}
+
+.subagent-activity-name {
+  color: var(--accent-light);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.subagent-activity-summary {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.subagent-result-body {
+  padding: 12px;
+}
+
+.tl-subagent-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin: 4px 0;
+  padding: 6px 12px;
+  background: rgba(108, 92, 231, 0.1);
+  border: 1px dashed rgba(108, 92, 231, 0.3);
+  border-radius: 8px;
+}
+
+.tl-subagent-name {
+  color: var(--accent-light);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.tl-dot.dot-subagent {
+  color: var(--accent);
+  background: var(--bg-primary);
+  animation: dotPulse 1.5s infinite;
+}
+
+.tl-dot.dot-subagent-result {
+  color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.tl-dot.dot-subagent-result.success {
+  color: var(--success);
+}
+
+.tl-dot.dot-subagent-result.error {
+  color: var(--danger);
+}
+
+/* ========================================
+   SUB-AGENT TIMELINE MODAL
+   ======================================== */
+.subagent-timeline {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.sa-tl-row {
+  display: flex;
+  gap: 16px;
+  position: relative;
+  min-height: 48px;
+}
+
+.sa-tl-line-col {
+  width: 24px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sa-tl-line {
+  position: absolute;
+  top: 24px;
+  bottom: -24px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sa-tl-row:last-child .sa-tl-line {
+  display: none;
+}
+
+.sa-tl-dot {
+  position: absolute;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sa-tl-dot.thinking {
+  border-color: rgba(241, 196, 15, 0.3);
+}
+
+.sa-tl-dot.tool_use {
+  border-color: rgba(225, 112, 85, 0.3);
+}
+
+.sa-tl-dot.tool_result {
+  border-color: rgba(81, 207, 102, 0.3);
+}
+
+.sa-tl-dot.text {
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.sa-tl-content {
+  flex: 1;
+  padding-bottom: 24px;
+  min-width: 0;
+}
+
+.sa-tl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-top: 8px;
+}
+
+.sa-tl-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sa-tl-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sa-tl-body {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.sa-tl-type-thinking {
+  opacity: 0.7;
+}
+
+.sa-tl-type-tool_use .tl-tool-json,
+.sa-tl-type-tool_result .tl-tool-json {
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }

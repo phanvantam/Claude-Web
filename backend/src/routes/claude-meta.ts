@@ -10,21 +10,33 @@ import {
   getMcpServersDetailed,
   updateProjectMcpServers,
   listAgents,
+  listAgentsWithDescription,
   getAgent,
   saveAgent,
   createAgent,
   deleteAgent,
+  listCustomCommands,
+  getCustomCommand,
+  saveCustomCommand,
+  deleteCustomCommand,
 } from '../services/claude-meta';
 import { getProject } from '../services/project';
 
 const router = Router();
 
 /**
- * GET /api/claude/commands — Danh sách slash commands (builtin + plugin).
+ * GET /api/claude/commands — Danh sách slash commands (builtin + plugin + custom).
+ * Query: projectId (optional) — scan thêm project-specific custom commands.
  */
-router.get('/commands', (_req, res) => {
+router.get('/commands', (req, res) => {
   try {
-    const commands = getAllCommands();
+    const projectId = req.query.projectId as string;
+    let projectPath: string | undefined;
+    if (projectId) {
+      const project = getProject(projectId);
+      if (project) projectPath = project.path;
+    }
+    const commands = getAllCommands(projectPath);
     res.json(commands);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -186,6 +198,15 @@ router.get('/agents', (_req, res) => {
   }
 });
 
+/** GET /api/claude/agents/with-desc — Agents kèm description (cho @mention autocomplete) */
+router.get('/agents/with-desc', (_req, res) => {
+  try {
+    res.json(listAgentsWithDescription());
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /** GET /api/claude/agents/:filename — Đọc nội dung agent */
 router.get('/agents/:filename', (req, res) => {
   try {
@@ -230,6 +251,88 @@ router.post('/agents', (req, res) => {
 router.delete('/agents/:filename', (req, res) => {
   try {
     deleteAgent(req.params.filename);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+// ============================
+// Custom Slash Commands — CRUD
+// ============================
+
+/** GET /api/claude/commands/custom — Liệt kê custom commands theo scope */
+router.get('/commands/custom', (req, res) => {
+  try {
+    const scope = (req.query.scope as string) || 'global';
+    const projectId = req.query.projectId as string;
+    let projectPath: string | undefined;
+
+    if (projectId) {
+      const project = getProject(projectId);
+      if (project) projectPath = project.path;
+    }
+
+    if (scope !== 'global' && scope !== 'project') {
+      res.status(400).json({ error: 'scope phải là "global" hoặc "project"' });
+      return;
+    }
+
+    const commands = listCustomCommands(scope, projectPath);
+    res.json(commands);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/claude/commands/custom/:filename — Đọc nội dung custom command */
+router.get('/commands/custom/:filename', (req, res) => {
+  try {
+    const scope = (req.query.scope as string) || 'global';
+    const projectId = req.query.projectId as string;
+    let projectPath: string | undefined;
+    if (projectId) {
+      const project = getProject(projectId);
+      if (project) projectPath = project.path;
+    }
+    const content = getCustomCommand(scope as any, req.params.filename, projectPath);
+    res.json({ content });
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+/** PUT /api/claude/commands/custom/:filename — Tạo hoặc cập nhật custom command */
+router.put('/commands/custom/:filename', (req, res) => {
+  try {
+    const { content, scope, projectId } = req.body;
+    if (typeof content !== 'string') {
+      res.status(400).json({ error: 'Trường "content" phải là chuỗi' });
+      return;
+    }
+    let projectPath: string | undefined;
+    if (projectId) {
+      const project = getProject(projectId);
+      if (project) projectPath = project.path;
+    }
+    saveCustomCommand(scope || 'global', req.params.filename, content, projectPath);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** DELETE /api/claude/commands/custom/:filename — Xóa custom command */
+router.delete('/commands/custom/:filename', (req, res) => {
+  try {
+    const scope = (req.query.scope as string) || 'global';
+    const projectId = req.query.projectId as string;
+    let projectPath: string | undefined;
+    if (projectId) {
+      const project = getProject(projectId);
+      if (project) projectPath = project.path;
+    }
+    deleteCustomCommand(scope as any, req.params.filename, projectPath);
     res.json({ success: true });
   } catch (error: any) {
     res.status(404).json({ error: error.message });

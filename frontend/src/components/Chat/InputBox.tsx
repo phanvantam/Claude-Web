@@ -8,13 +8,13 @@ import {
   SafetyCertificateOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  LockOutlined,
   QuestionCircleOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { claudeApi } from '../../services/api';
 import type { SlashCommand, ModelInfo } from '../../services/api';
-import type { PendingPermission } from '../../hooks/useChat';
+import type { PendingPermission, PendingAskUser } from '../../hooks/useChat';
 
 /**
  * Mô tả ngắn gọn các tool phổ biến của Claude CLI.
@@ -145,6 +145,85 @@ function HelpIcon({ title, desc }: { title: string; desc: string }) {
   );
 }
 
+/**
+ * Panel hiển thị câu hỏi từ Claude (AskUserQuestion tool).
+ * Hỗ trợ 2 mode:
+ * - Có options → hiện danh sách nút chọn
+ * - Không options → hiện textarea nhập tự do
+ */
+const AskUserPanel: React.FC<{
+  pendingAskUser: PendingAskUser;
+  onRespond: (answer: string) => void;
+}> = ({ pendingAskUser, onRespond }) => {
+  const [textAnswer, setTextAnswer] = useState('');
+  const { questions } = pendingAskUser;
+
+  return (
+    <div className="permission-panel ask-user-panel">
+      {questions.map((q, qi) => (
+        <div key={qi} className="ask-user-question-block">
+          {q.header && (
+            <div className="permission-panel-header">
+              <QuestionCircleOutlined className="permission-panel-icon" />
+              <span className="permission-panel-title">{q.header}</span>
+            </div>
+          )}
+          <div className="ask-user-question-text">{q.question}</div>
+
+          {/* Options mode — hiện danh sách button chọn */}
+          {q.options && q.options.length > 0 ? (
+            <div className="ask-user-options">
+              {q.options.map((opt, oi) => (
+                <button
+                  key={oi}
+                  className="ask-user-option-btn"
+                  onClick={() => onRespond(opt.label)}
+                >
+                  <span className="ask-user-option-label">{opt.label}</span>
+                  {opt.description && (
+                    <span className="ask-user-option-desc">{opt.description}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            /* Free text mode — textarea để nhập tự do */
+            <div className="ask-user-text-input">
+              <textarea
+                className="ask-user-textarea"
+                value={textAnswer}
+                onChange={(e) => setTextAnswer(e.target.value)}
+                placeholder="Nhập câu trả lời..."
+                rows={2}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && textAnswer.trim()) {
+                    e.preventDefault();
+                    onRespond(textAnswer.trim());
+                    setTextAnswer('');
+                  }
+                }}
+              />
+              <button
+                className="permission-btn permission-btn-allow"
+                disabled={!textAnswer.trim()}
+                onClick={() => {
+                  if (textAnswer.trim()) {
+                    onRespond(textAnswer.trim());
+                    setTextAnswer('');
+                  }
+                }}
+              >
+                <CheckCircleOutlined /> Gửi
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 interface InputBoxProps {
   onSend: (message: string) => void;
   disabled: boolean;
@@ -167,6 +246,12 @@ interface InputBoxProps {
   pendingPermission?: PendingPermission | null;
   /** Callback phản hồi permission: true = cho phép, false = từ chối */
   onRespondPermission?: (allowed: boolean) => void;
+  /** AskUserQuestion đang chờ user trả lời */
+  pendingAskUser?: PendingAskUser | null;
+  /** Callback phản hồi AskUserQuestion */
+  onRespondAskUser?: (answer: string) => void;
+  /** Project ID — dùng để load custom commands theo dự án */
+  projectId?: string;
 }
 
 const InputBox: React.FC<InputBoxProps> = ({
@@ -182,9 +267,20 @@ const InputBox: React.FC<InputBoxProps> = ({
   onPermissionModeChange,
   pendingPermission,
   onRespondPermission,
+  pendingAskUser,
+  onRespondAskUser,
+  projectId,
 }) => {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Theo dõi mobile để set dropdown full-width */
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Danh sách commands và models từ API
   const [commands, setCommands] = useState<SlashCommand[]>([]);
@@ -196,9 +292,16 @@ const InputBox: React.FC<InputBoxProps> = ({
   const [slashIndex, setSlashIndex] = useState(0);
   const slashMenuRef = useRef<HTMLDivElement>(null);
 
-  // Load danh sách commands + models từ backend (1 lần)
+  // State cho @agent mention popup
+  const [agents, setAgents] = useState<{ name: string; filename: string; description: string }[]>([]);
+  const [showAgentMenu, setShowAgentMenu] = useState(false);
+  const [agentFilter, setAgentFilter] = useState('');
+  const [agentIndex, setAgentIndex] = useState(0);
+  const agentMenuRef = useRef<HTMLDivElement>(null);
+
+  // Load danh sách commands + models từ backend (khi mount hoặc projectId đổi)
   useEffect(() => {
-    claudeApi.getCommands()
+    claudeApi.getCommands(projectId)
       .then(setCommands)
       .catch(() => {
         setCommands([
@@ -217,7 +320,12 @@ const InputBox: React.FC<InputBoxProps> = ({
           { key: 'haiku', label: 'Haiku' },
         ]);
       });
-  }, []);
+
+    // Fetch danh sách agents cho @mention autocomplete
+    claudeApi.listAgentsWithDesc()
+      .then(setAgents)
+      .catch(() => setAgents([]));
+  }, [projectId]);
 
   /** Gửi tin nhắn */
   const handleSend = () => {
@@ -241,6 +349,19 @@ const InputBox: React.FC<InputBoxProps> = ({
     setValue(cmd + ' ');
     setShowSlashMenu(false);
     setSlashFilter('');
+    textareaRef.current?.focus();
+  }, []);
+
+  /** Lọc agents theo text sau '@' */
+  const filteredAgents = agents.filter(a =>
+    a.name.toLowerCase().includes(agentFilter.toLowerCase())
+  );
+
+  /** Chèn @agent-name vào input — replace text sau '@' */
+  const insertAgent = useCallback((name: string) => {
+    setValue(prev => prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `));
+    setShowAgentMenu(false);
+    setAgentFilter('');
     textareaRef.current?.focus();
   }, []);
 
@@ -270,6 +391,30 @@ const InputBox: React.FC<InputBoxProps> = ({
       }
     }
 
+    // Agent menu đang mở — xử lý navigation
+    if (showAgentMenu && filteredAgents.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAgentIndex(i => (i + 1) % filteredAgents.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAgentIndex(i => (i - 1 + filteredAgents.length) % filteredAgents.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertAgent(filteredAgents[agentIndex].name);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowAgentMenu(false);
+        return;
+      }
+    }
+
     // Enter gửi, Shift+Enter xuống dòng
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -287,9 +432,21 @@ const InputBox: React.FC<InputBoxProps> = ({
       setShowSlashMenu(true);
       setSlashFilter(newVal);
       setSlashIndex(0);
+      setShowAgentMenu(false);
     } else {
       setShowSlashMenu(false);
       setSlashFilter('');
+    }
+
+    // Phát hiện @agent mention — trigger khi gõ '@' không trong slash command
+    const atMatch = newVal.match(/@([a-zA-Z0-9_-]*)$/);
+    if (atMatch && !newVal.startsWith('/') && agents.length > 0) {
+      setShowAgentMenu(true);
+      setAgentFilter(atMatch[1]);
+      setAgentIndex(0);
+    } else {
+      setShowAgentMenu(false);
+      setAgentFilter('');
     }
 
     // Auto-resize textarea
@@ -298,24 +455,31 @@ const InputBox: React.FC<InputBoxProps> = ({
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   };
 
-  // Đóng slash menu khi click bên ngoài
+  // Đóng slash menu và agent menu khi click bên ngoài
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (slashMenuRef.current && !slashMenuRef.current.contains(e.target as Node)) {
         setShowSlashMenu(false);
+      }
+      if (agentMenuRef.current && !agentMenuRef.current.contains(e.target as Node)) {
+        setShowAgentMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cuộn item đang chọn vào view
+  // Cuộn item đang chọn vào view (slash menu hoặc agent menu)
   useEffect(() => {
     if (showSlashMenu && slashMenuRef.current) {
       const active = slashMenuRef.current.querySelector('.slash-item.active');
       active?.scrollIntoView({ block: 'nearest' });
     }
-  }, [slashIndex, showSlashMenu]);
+    if (showAgentMenu && agentMenuRef.current) {
+      const active = agentMenuRef.current.querySelector('.slash-item.active');
+      active?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [slashIndex, showSlashMenu, agentIndex, showAgentMenu]);
 
   /** Menu chọn model — kèm icon dấu hỏi mô tả từng model */
   const modelMenuItems: MenuProps['items'] = models.map(m => {
@@ -382,6 +546,14 @@ const InputBox: React.FC<InputBoxProps> = ({
         </div>
       )}
 
+      {/* AskUserQuestion panel — hiện khi Claude hỏi user qua tool tương tác */}
+      {pendingAskUser && (
+        <AskUserPanel
+          pendingAskUser={pendingAskUser}
+          onRespond={(answer) => onRespondAskUser?.(answer)}
+        />
+      )}
+
       {/* Slash command popup */}
       {showSlashMenu && filteredCommands.length > 0 && (
         <div className="slash-menu" ref={slashMenuRef}>
@@ -394,9 +566,68 @@ const InputBox: React.FC<InputBoxProps> = ({
               onMouseEnter={() => setSlashIndex(i)}
             >
               <span className="slash-cmd">{c.cmd}</span>
-              <span className="slash-desc">{c.desc}</span>
+              {/* Truncate mô tả 1 dòng — đọc full qua dấu ? */}
+              <span className="slash-desc slash-desc-truncate">{c.desc}</span>
               {c.source !== 'builtin' && (
                 <span className="slash-source">{c.source}</span>
+              )}
+              {c.desc && (
+                <Tooltip
+                  title={
+                    <span>
+                      {c.desc}
+                      {c.source !== 'builtin' && (
+                        <span style={{ display: 'block', marginTop: 4, color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
+                          Nguồn: {c.source}
+                        </span>
+                      )}
+                    </span>
+                  }
+                  trigger={['hover', 'click']}
+                  placement="left"
+                  mouseEnterDelay={0.2}
+                  styles={{ root: { maxWidth: 280 } }}
+                >
+                  <QuestionCircleOutlined
+                    className="agent-desc-help"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Tooltip>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* @Agent mention popup — tương tự slash-menu, trigger bằng '@' */}
+      {showAgentMenu && filteredAgents.length > 0 && (
+        <div className="slash-menu" ref={agentMenuRef}>
+          <div className="slash-menu-title">Sub Agents</div>
+          {filteredAgents.map((a, i) => (
+            <div
+              key={a.name}
+              className={`slash-item ${i === agentIndex ? 'active' : ''}`}
+              onClick={() => insertAgent(a.name)}
+              onMouseEnter={() => setAgentIndex(i)}
+            >
+              <span className="slash-cmd">@{a.name}</span>
+              {/* Mô tả: truncate 1 dòng — đọc full qua dấu ? */}
+              <span className="slash-desc slash-desc-truncate">
+                {a.description || a.name}
+              </span>
+              {a.description && (
+                <Tooltip
+                  title={a.description}
+                  trigger={['hover', 'click']}
+                  placement="left"
+                  mouseEnterDelay={0.2}
+                  styles={{ root: { maxWidth: 280 } }}
+                >
+                  <QuestionCircleOutlined
+                    className="agent-desc-help"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Tooltip>
               )}
             </div>
           ))}
@@ -413,6 +644,8 @@ const InputBox: React.FC<InputBoxProps> = ({
           }}
           trigger={['click']}
           placement="topLeft"
+          overlayClassName="toolbar-dropdown"
+          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Chọn model">
             <RobotOutlined />
@@ -459,6 +692,8 @@ const InputBox: React.FC<InputBoxProps> = ({
           }}
           trigger={['click']}
           placement="topLeft"
+          overlayClassName="toolbar-dropdown"
+          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Mức độ nỗ lực">
             <ThunderboltOutlined />
@@ -525,6 +760,8 @@ const InputBox: React.FC<InputBoxProps> = ({
           }}
           trigger={['click']}
           placement="topLeft"
+          overlayClassName="toolbar-dropdown"
+          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Chế độ quyền">
             <SafetyCertificateOutlined />

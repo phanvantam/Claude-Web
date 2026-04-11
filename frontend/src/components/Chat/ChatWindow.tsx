@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Typography, Spin } from 'antd';
 import {
   RobotOutlined,
@@ -12,8 +12,15 @@ import {
   ToolOutlined,
   ClockCircleOutlined,
   CloudServerOutlined,
+  CaretRightOutlined,
+  CaretDownOutlined,
+  BarChartOutlined,
+  BookOutlined,
+  SyncOutlined,
+  SearchOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
-import type { ChatMessage, ContentBlock } from '../../types';
+import type { ChatMessage, ContentBlock, SubAgentActivity } from '../../types';
 import type { PendingPermission } from '../../hooks/useChat';
 import ToolCallCard from './ToolCallCard';
 import MessageContent from './MessageContent';
@@ -61,6 +68,100 @@ const LiveTimer: React.FC<{ isActive: boolean; startedAt?: number | null }> = Re
   );
 });
 
+/**
+ * Card hiển thị kết quả sub-agent trên timeline chính.
+ * - Header: tên agent + trạng thái (thành công/lỗi) + toggle mở/đóng
+ * - Collapsible: danh sách tool calls nội bộ (activities)
+ * - Footer: nội dung kết quả tóm tắt
+ */
+const SubAgentResultCard: React.FC<{
+  agentName: string;
+  result: string;
+  isError?: boolean;
+  activities?: SubAgentActivity[];
+  usage?: { tokens: number; tools: number; durationMs: number };
+  agentId?: string;
+}> = ({ agentName, result, isError, activities, usage, agentId }) => {
+  const [expanded, setExpanded] = useState(false);
+  const hasActivities = activities && activities.length > 0;
+
+  return (
+    <div className={`tl-subagent-result-card ${isError ? 'error' : 'success'}`}>
+      {/* Header: tên + status + toggle */}
+      <div className="subagent-result-header" onClick={() => hasActivities && setExpanded(!expanded)}>
+        <span className="subagent-result-icon">
+          {isError
+            ? <CloseCircleOutlined style={{ color: 'var(--danger)', fontSize: 12 }} />
+            : <CheckCircleOutlined style={{ color: 'var(--success)', fontSize: 12 }} />
+          }
+        </span>
+        <Text strong style={{ fontSize: 13, color: 'var(--accent-light)' }}>
+          {agentName}
+        </Text>
+        {hasActivities && (
+          <span className="subagent-result-count">
+            {activities.length} bước
+          </span>
+        )}
+        {hasActivities && (
+          <span className="subagent-result-toggle">
+            {expanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
+          </span>
+        )}
+
+        {/* Usage stats — hiện bên phải header */}
+        {usage && (
+          <div className="subagent-usage-chips">
+            <span title="Tổng tokens sử dụng">
+              <MessageOutlined style={{ fontSize: 10 }} /> {usage.tokens.toLocaleString()}
+            </span>
+            <span title="Số công cụ đã dùng">
+              <ToolOutlined style={{ fontSize: 10 }} /> {usage.tools}
+            </span>
+            <span title="Thời gian chạy">
+              <ClockCircleOutlined style={{ fontSize: 10 }} /> {(usage.durationMs / 1000).toFixed(1)}s
+            </span>
+            {agentId && (
+              <span className="agent-id-chip" title="Agent ID">
+                ID: {agentId}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Collapsible activities — tool calls nội bộ sub-agent */}
+      {expanded && hasActivities && (
+        <div className="subagent-activities-list">
+          {activities.map((act, idx) => (
+            <div key={idx} className="subagent-activity-item">
+              <span className={`subagent-activity-status ${act.isError ? 'error' : act.result ? 'done' : ''}`}>
+                {act.isError
+                  ? <CloseCircleOutlined style={{ fontSize: 10 }} />
+                  : act.result
+                    ? <CheckCircleOutlined style={{ fontSize: 10 }} />
+                    : <ToolOutlined style={{ fontSize: 10 }} />
+                }
+              </span>
+              <span className="subagent-activity-name">{act.name}</span>
+              <span className="subagent-activity-summary">
+                {act.input && typeof act.input === 'object'
+                  ? Object.entries(act.input).slice(0, 2).map(([k, v]) => `${k}: ${String(v).slice(0, 40)}`).join(', ')
+                  : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Result text — luôn hiện */}
+      <div className="subagent-result-body">
+        <MessageContent content={result} />
+      </div>
+    </div>
+  );
+};
+
 interface ChatWindowProps {
   messages: ChatMessage[];
   streamingContent: string;
@@ -79,6 +180,8 @@ interface ChatWindowProps {
   activeToolName?: string | null;
   /** Timestamp (ms) khi bắt đầu processing — dùng cho elapsed timer */
   processingStartedAt?: number | null;
+  /** Sub-agent đang chạy — hiện indicator trước thinking row */
+  activeSubAgent?: { name: string; prompt: string } | null;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -93,6 +196,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   pendingPermission,
   activeToolName,
   processingStartedAt,
+  activeSubAgent,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,7 +247,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   /** Render assistant message blocks dạng timeline dọc */
   const renderAssistantBlocks = (msg: ChatMessage) => {
     const blocks = msg.blocks || [];
-    
+
     // Nếu không có blocks, dùng fallback từ content và toolCalls (hỗ trợ dữ liệu cũ)
     if (blocks.length === 0) {
       const fallback: ContentBlock[] = [];
@@ -189,6 +293,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       // Tool chưa có result — đang chạy hoặc pending
       return { className: `tl-dot dot-tool${isLast ? ' streaming' : ''}`, icon: <ToolOutlined style={{ fontSize: 11 }} /> };
     }
+    if (block.type === 'subagent_result') {
+      return {
+        className: `tl-dot dot-subagent-result${block.isError ? ' error' : ' success'}`,
+        icon: <RobotOutlined style={{ fontSize: 11 }} />,
+      };
+    }
     // Text block
     return {
       className: `tl-dot dot-text${isStreaming && isLast ? ' streaming' : ''}`,
@@ -214,6 +324,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             );
           }
 
+          if (block.type === 'subagent_result') {
+            return (
+              <div key={`block-${i}`} className="tl-block-row">
+                <div className={dot.className}>{dot.icon}</div>
+                <div className="tl-block-content">
+                  <SubAgentResultCard
+                    agentName={block.agentName}
+                    result={block.result}
+                    isError={block.isError}
+                    activities={block.activities}
+                    usage={block.usage}
+                    agentId={block.agentId}
+                  />
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div key={`block-${i}`} className="tl-block-row">
               <div className={dot.className}>{dot.icon}</div>
@@ -224,7 +352,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     {isStreaming && isLast && <span className="cursor-blink">▊</span>}
                   </>
                 ) : (
-                  <ToolCallCard toolCall={block.tool} isFinalized={!isStreaming} />
+                  <ToolCallCard toolCall={(block as any).tool} isFinalized={!isStreaming} />
                 )}
               </div>
             </div>
@@ -286,9 +414,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
 
         if (msg.role === 'system') {
+          // Detect header to add icon
+          let icon = null;
+          if (msg.content.includes('### Thống kê phiên')) icon = <BarChartOutlined />;
+          else if (msg.content.includes('### Trạng thái phiên')) icon = <InfoCircleOutlined />;
+          else if (msg.content.includes('### Danh sách lệnh')) icon = <BookOutlined />;
+          else if (msg.content.includes('### Thay đổi Model') || msg.content.includes('### Thông tin Model')) icon = <RobotOutlined />;
+          else if (msg.content.includes('nén context')) icon = <SyncOutlined />;
+
           return (
             <div key={msg.id} className="tl-system-row">
-              <span className="tl-system-text">{msg.content}</span>
+              <div className="tl-system-content">
+                {icon && <div className="tl-system-icon-wrapper">{icon}</div>}
+                <MessageContent content={msg.content} />
+              </div>
             </div>
           );
         }
@@ -331,6 +470,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className="tl-content-col">
             {/* Streaming blocks — collapse/expand */}
             {hasStreamingData && renderBlockList(streamingBlocks, true)}
+
+            {/* Sub-agent indicator — hiện khi agent đang chạy (bên trong tl-assistant-row streaming) */}
+            {activeSubAgent && (
+              <div className="tl-block-row">
+                <div className="tl-dot dot-subagent">
+                  <RobotOutlined style={{ fontSize: 11 }} />
+                </div>
+                <div className="tl-subagent-indicator">
+                  <span className="tl-subagent-name">
+                    <LoadingOutlined style={{ fontSize: 10, marginRight: 5 }} />
+                    {activeSubAgent.name}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Status indicator + timer + cancel */}
             {isThinking && (

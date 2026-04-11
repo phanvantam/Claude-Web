@@ -21,10 +21,27 @@ export interface ToolCall {
   isError?: boolean;
 }
 
+/** Một tool call nội bộ của sub-agent — dùng để hiển thị trong collapsible section */
+export interface SubAgentActivity {
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; tool: ToolCall }
-  | { type: 'thinking'; thinking: string };
+  | { type: 'thinking'; thinking: string }
+  | { 
+      type: 'subagent_result'; 
+      agentName: string; 
+      result: string; 
+      isError?: boolean; 
+      activities?: SubAgentActivity[];
+      usage?: { tokens: number; tools: number; durationMs: number };
+      agentId?: string;
+    };
 
 export interface ChatMessage {
   id: string;
@@ -67,4 +84,30 @@ export interface GlobalConfig {
   systemPrompt?: string;
   customArgs?: string[];
   theme?: 'light' | 'dark';
+}
+
+// ============================
+// Sub-Agent Types
+// ============================
+
+/** Thông tin tổng quan của một sub-agent đã chạy trong session */
+export interface SubAgentInfo {
+  agentId: string;
+  /** Loại agent: "Plan", "Bash", custom name... */
+  agentType: string;
+  description: string;
+  /** Số events trong transcript */
+  messageCount: number;
+  /** Thời điểm bắt đầu chạy (ISO string) */
+  startedAt?: string;
+}
+
+/** Một event trong timeline của sub-agent */
+export interface SubAgentTimelineEvent {
+  type: 'thinking' | 'tool_use' | 'tool_result' | 'text';
+  content: string;
+  timestamp: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  isError?: boolean;
 }

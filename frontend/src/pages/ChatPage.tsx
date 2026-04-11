@@ -1,18 +1,23 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Popover, Spin, message } from 'antd';
+import { Button, Popover, Spin, Badge, Tooltip, message } from 'antd';
 import {
   FolderOutlined,
   DeleteOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
+  RobotOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { projectsApi, configApi, claudeApi, sessionsApi } from '../services/api';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
 import InputBox from '../components/Chat/InputBox';
 import McpStatusPopover from '../components/Chat/McpStatusPopover';
-import type { Project, GlobalConfig } from '../types';
+import SubAgentDrawer from '../components/Chat/SubAgentDrawer';
+import SubAgentTimelineModal from '../components/Chat/SubAgentTimelineModal';
+import SkillDrawer from '../components/Chat/SkillDrawer';
+import type { Project, GlobalConfig, SubAgentInfo } from '../types';
 
 const ChatPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -20,6 +25,15 @@ const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [config, setConfig] = useState<GlobalConfig>({ model: '' });
+
+  // Sub-Agent UI state
+  const [subAgentDrawerOpen, setSubAgentDrawerOpen] = useState(false);
+  const [subAgents, setSubAgents] = useState<SubAgentInfo[]>([]);
+  const [subAgentsLoading, setSubAgentsLoading] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [timelineModalOpen, setTimelineModalOpen] = useState(false);
+  const [skillDrawerOpen, setSkillDrawerOpen] = useState(false);
+  const [skillCount, setSkillCount] = useState(0);
   
   const querySessionId = searchParams.get('sessionId');
 
@@ -49,6 +63,9 @@ const ChatPage: React.FC = () => {
     addSystemMessage,
     compactSession,
     isSwitchingSession,
+    activeSubAgent,
+    pendingAskUser,
+    respondAskUser,
   } = useChat();
 
   const lastStartedRef = React.useRef<string | null>(null);
@@ -91,6 +108,20 @@ const ChatPage: React.FC = () => {
       });
     }
   }, [projectId, navigate]);
+
+  // Fetch số lượng custom skills — đồng bộ với SkillDrawer (cùng API listCustomCommands)
+  const fetchSkillCount = useCallback(() => {
+    Promise.all([
+      claudeApi.listCustomCommands('global'),
+      project?.id ? claudeApi.listCustomCommands('project', project.id) : Promise.resolve([]),
+    ]).then(([global, proj]) => {
+      setSkillCount(global.length + proj.length);
+    }).catch(() => {});
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (project?.id) fetchSkillCount();
+  }, [project?.id, fetchSkillCount]);
 
   // 3. Tải config mặc định (chỉ chạy khi mount hoặc projectId đổi)
   useEffect(() => {
@@ -214,8 +245,23 @@ const ChatPage: React.FC = () => {
 
     const trimmed = text.trim();
 
-    // Không phải slash command → gửi bình thường
+    // Không phải slash command → kiểm tra @mention agent rồi gửi
     if (!trimmed.startsWith('/')) {
+      // Transform @agent-name thành SDK directive
+      // Case 1: "@agent-name task text" → gọi agent với task cụ thể
+      const mentionWithTask = trimmed.match(/^@([a-z0-9_-]+)\s+([\s\S]+)/i);
+      if (mentionWithTask) {
+        const [, agentName, task] = mentionWithTask;
+        sendMessage(`Use the "${agentName}" subagent to: ${task}`);
+        return;
+      }
+      // Case 2: "@agent-name" không có task → gọi agent với context hiện tại
+      const mentionOnly = trimmed.match(/^@([a-z0-9_-]+)$/i);
+      if (mentionOnly) {
+        const agentName = mentionOnly[1];
+        sendMessage(`Use the "${agentName}" subagent to: assist with the current context`);
+        return;
+      }
       sendMessage(trimmed);
       return;
     }
@@ -237,69 +283,129 @@ const ChatPage: React.FC = () => {
 
       case '/model': {
         if (args.length > 0) {
-          // /model <name> → đổi model
           handleModelChange(args[0]);
-          addSystemMessage(`✅ Đã chuyển sang model: **${args[0]}**`);
+          addSystemMessage(`### Thay đổi Model\n\nĐã chuyển sang model: **${args[0]}**`);
         } else {
-          // /model → hiển model hiện tại
-          addSystemMessage(`**Model hiện tại:** ${config.model || '—'}`);
+          addSystemMessage(`### Thông tin Model\n\n**Model hiện tại:** \`${config.model || '—'}\``);
         }
         break;
       }
 
       case '/cost': {
-        const lines = [
-          `**Thống kê phiên hiện tại**`,
-          `- Model: ${sessionStats.model || '—'}`,
-          `- Tokens nhận: ${sessionStats.inputTokens.toLocaleString('vi-VN')}`,
-          `- Tokens gửi: ${sessionStats.outputTokens.toLocaleString('vi-VN')}`,
-          `- Tổng tokens: **${sessionStats.totalTokens.toLocaleString('vi-VN')}**`,
-          `- Chi phí: **$${sessionStats.cost.toFixed(4)}**`,
-          `- Số lượt hỏi: ${sessionStats.turns}`,
+        const rows = [
+          `| Thông tin | Giá trị |`,
+          `| :--- | :--- |`,
+          `| **Model** | \`${sessionStats.model || '—'}\` |`,
+          `| **Tokens nhận** | ${sessionStats.inputTokens.toLocaleString('vi-VN')} |`,
+          `| **Tokens gửi** | ${sessionStats.outputTokens.toLocaleString('vi-VN')} |`,
+          `| **Tổng tokens** | **${sessionStats.totalTokens.toLocaleString('vi-VN')}** |`,
+          `| **Chi phí** | **$${sessionStats.cost.toFixed(4)}** |`,
+          `| **Lượt hỏi** | ${sessionStats.turns} |`,
         ];
-        addSystemMessage(lines.join('\n'));
+        addSystemMessage(`### Thống kê phiên hiện tại\n\n${rows.join('\n')}`);
         break;
       }
 
       case '/status': {
-        const statusLines = [
-          `**Trạng thái phiên**`,
-          `- Session ID: \`${sessionId}\``,
-          `- Model: ${config.model || '—'}`,
-          `- Nỗ lực: ${effortLabel}`,
-          `- Quyền: ${permissionLabel}`,
-          `- Tin nhắn: ${messages.length}`,
+        const statusRows = [
+          `| Thuộc tính | Trạng thái |`,
+          `| :--- | :--- |`,
+          `| **Session ID** | \`${sessionId}\` |`,
+          `| **Model** | \`${config.model || '—'}\` |`,
+          `| **Nỗ lực** | \`${effortLabel}\` |`,
+          `| **Quyền** | \`${permissionLabel}\` |`,
+          `| **Tin nhắn** | ${messages.length} |`,
         ];
-        addSystemMessage(statusLines.join('\n'));
+        addSystemMessage(`### Trạng thái phiên\n\n${statusRows.join('\n')}`);
         break;
       }
 
       case '/help': {
         const helpLines = [
-          `**Lệnh khả dụng**`,
-          `- \`/clear\` — Tạo cuộc hội thoại mới (xoá lịch sử)`,
-          `- \`/compact\` — Nén ngữ cảnh (⚠️ chưa hỗ trợ)`,
-          `- \`/cost\` — Hiển thị chi phí & token phiên hiện tại`,
-          `- \`/help\` — Danh sách lệnh này`,
-          `- \`/model [tên]\` — Xem hoặc đổi model`,
-          `- \`/status\` — Trạng thái phiên hiện tại`,
+          `### Danh sách lệnh khả dụng`,
+          ``,
+          `- \`/clear\` — **Làm mới**: Xóa lịch sử và bắt đầu hội thoại mới.`,
+          `- \`/cost\` — **Chi phí**: Xem thống kê token và chi phí phiên này.`,
+          `- \`/status\` — **Trạng thái**: Kiểm tra cấu hình phiên hiện tại.`,
+          `- \`/model [tên]\` — **Model**: Xem hoặc chuyển đổi AI model.`,
+          `- \`/compact\` — **Nén**: Tóm tắt ngữ cảnh (Claude sẽ thực hiện).`,
+          `- \`/help\` — **Trợ giúp**: Hiển thị danh sách này.`,
+          ``,
+          `*Mẹo: Bạn có thể @mention một agent (vd: \`@coder\`) để giao việc chuyên biệt.*`,
         ];
         addSystemMessage(helpLines.join('\n'));
         break;
       }
 
       case '/compact': {
-        addSystemMessage(`⏳ Đang nén context hội thoại... Claude sẽ tóm tắt và tạo phiên mới.`);
+        addSystemMessage(`**Đang nén context...** Claude sẽ tóm tắt nội dung và khởi tạo phiên mới để tối ưu bộ nhớ.`);
         compactSession();
         break;
       }
 
       default: {
-        addSystemMessage(`❌ Lệnh \`${cmd}\` không tồn tại. Gõ \`/help\` để xem danh sách lệnh.`);
+        // Custom/plugin slash command — forward cho Claude SDK xử lý.
+        // Claude CLI hỗ trợ custom commands natively (từ ~/.claude/commands/ hoặc plugins).
+        sendMessage(trimmed);
         break;
       }
     }
   }, [sessionId, projectId, config.model, sessionStats, messages.length, effortLabel, permissionLabel, sendMessage, startSession, handleModelChange, addSystemMessage, compactSession]);
+
+  /**
+   * Fetch danh sách sub-agents cho session hiện tại.
+   * Gọi khi mở drawer hoặc khi session kết thúc 1 turn (status = idle).
+   */
+  const fetchSubAgents = useCallback(async () => {
+    if (!sessionId) {
+      setSubAgents([]);
+      return;
+    }
+    setSubAgentsLoading(true);
+    try {
+      const agents = await sessionsApi.listSubAgents(sessionId);
+      setSubAgents(agents);
+    } catch (err) {
+      console.error('[ChatPage] Lỗi tải sub-agents:', err);
+    } finally {
+      setSubAgentsLoading(false);
+    }
+  }, [sessionId]);
+
+  // Fetch sub-agents ngay khi sessionId có giá trị (load page, chuyển session)
+  useEffect(() => {
+    if (sessionId) fetchSubAgents();
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fetch sub-agents khi status chuyển về idle (turn kết thúc)
+  // Delay 2s vì sub-agent files có thể chưa ghi xong filesystem lúc status = idle
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    if (prevStatusRef.current !== 'idle' && status === 'idle' && sessionId) {
+      const timer = setTimeout(() => fetchSubAgents(), 2000);
+      return () => clearTimeout(timer);
+    }
+    prevStatusRef.current = status;
+  }, [status, sessionId, fetchSubAgents]);
+
+
+  // Fetch khi mở drawer thủ công
+  const handleOpenSubAgentDrawer = useCallback(() => {
+    setSubAgentDrawerOpen(true);
+    fetchSubAgents();
+  }, [fetchSubAgents]);
+
+  // Callback khi user click vào agent trong drawer → mở modal timeline
+  const handleSelectAgent = useCallback((agentId: string) => {
+    setSelectedAgentId(agentId);
+    setTimelineModalOpen(true);
+  }, []);
+
+  // Tìm info agent đang xem để hiện title trong modal
+  const selectedAgentInfo = useMemo(() => {
+    if (!selectedAgentId) return null;
+    return subAgents.find(a => a.agentId === selectedAgentId) || null;
+  }, [selectedAgentId, subAgents]);
 
   const statsContent = (
     <div style={{ fontSize: 12, minWidth: 200, color: 'rgba(255,255,255,0.85)' }}>
@@ -350,7 +456,30 @@ const ChatPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Nút Skills — quản lý custom slash commands */}
+          <Badge count={skillCount} size="small" offset={[-4, 4]} style={{ backgroundColor: '#e17055' }}>
+            <Tooltip title="Skills">
+              <Button
+                type="text"
+                icon={<ThunderboltOutlined />}
+                onClick={() => { setSkillDrawerOpen(true); fetchSkillCount(); }}
+                style={{ color: skillCount > 0 ? '#e17055' : 'rgba(255,255,255,0.4)' }}
+                size="small"
+              />
+            </Tooltip>
+          </Badge>
           <McpStatusPopover projectId={project?.id} />
+          {/* Nút Sub Agents — badge hiện số lượng agent đã chạy */}
+          <Badge count={subAgents.length} size="small" offset={[-4, 4]} style={{ backgroundColor: 'var(--accent)' }}>
+            <Button
+              type="text"
+              icon={<RobotOutlined />}
+              onClick={handleOpenSubAgentDrawer}
+              style={{ color: subAgents.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}
+              size="small"
+              title="Sub Agents"
+            />
+          </Badge>
           <Popover content={statsContent} trigger="click" placement="bottomRight">
             <Button
               type="text"
@@ -383,6 +512,7 @@ const ChatPage: React.FC = () => {
         pendingPermission={pendingPermission}
         activeToolName={activeToolName}
         processingStartedAt={processingStartedAt}
+        activeSubAgent={activeSubAgent}
       />
 
       {/* Input Box */}
@@ -399,6 +529,9 @@ const ChatPage: React.FC = () => {
         onPermissionModeChange={setSessionPermissionMode}
         pendingPermission={pendingPermission}
         onRespondPermission={respondPermission}
+        projectId={project?.id}
+        pendingAskUser={pendingAskUser}
+        onRespondAskUser={respondAskUser}
       />
       {/* Loading overlay khi chuyển phiên — backdrop blur + chặn click */}
       {isSwitchingSession && (
@@ -406,6 +539,32 @@ const ChatPage: React.FC = () => {
           <Spin indicator={<LoadingOutlined style={{ fontSize: 28, color: 'var(--accent)' }} />} />
         </div>
       )}
+
+      {/* Sub-Agent Drawer — danh sách agents đã chạy */}
+      <SubAgentDrawer
+        open={subAgentDrawerOpen}
+        onClose={() => setSubAgentDrawerOpen(false)}
+        agents={subAgents}
+        onSelectAgent={handleSelectAgent}
+        loading={subAgentsLoading}
+        onRefresh={fetchSubAgents}
+      />
+
+      {/* Sub-Agent Timeline Modal — chi tiết hoạt động agent */}
+      <SubAgentTimelineModal
+        open={timelineModalOpen}
+        onClose={() => { setTimelineModalOpen(false); setSelectedAgentId(null); }}
+        sessionId={sessionId}
+        agentId={selectedAgentId}
+        agentInfo={selectedAgentInfo}
+      />
+
+      {/* Skill Drawer — quản lý custom slash commands */}
+      <SkillDrawer
+        open={skillDrawerOpen}
+        onClose={() => { setSkillDrawerOpen(false); fetchSkillCount(); }}
+        projectId={project?.id}
+      />
     </div>
   );
 };
