@@ -14,6 +14,10 @@ if (import.meta.env.DEV) {
   });
 }
 
+// Log build version — verify production đang chạy đúng bản
+declare const __BUILD_TIME__: string;
+console.log(`[Claude Web] Build: ${typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}`);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

@@ -4,6 +4,10 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // Inject build version vào HTML (%VITE_BUILD_VERSION%) và JS (import.meta.env.VITE_BUILD_VERSION)
+  define: {
+    '__BUILD_TIME__': JSON.stringify(new Date().toISOString()),
+  },
   // Cho phép Vite serve file từ thư mục node_modules/monaco-editor
   server: {
     port: 5173,
