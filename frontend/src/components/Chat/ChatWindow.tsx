@@ -17,7 +17,6 @@ import {
   BarChartOutlined,
   BookOutlined,
   SyncOutlined,
-  SearchOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
 import type { ChatMessage, ContentBlock, SubAgentActivity } from '../../types';
