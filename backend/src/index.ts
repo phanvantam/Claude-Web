@@ -331,6 +331,12 @@ process.on('uncaughtException', (err: any) => {
     logger.warn('[Process] EPIPE error caught (Broken Pipe), ignoring...');
     return;
   }
+  // claude-agent-sdk throw 'Query closed before response received' sau interrupt()
+  // Đây là side effect bình thường khi ép SDK dừng — bỏ qua an toàn.
+  if (err?.message?.includes('Query closed before response received')) {
+    logger.warn('[Process] SDK Query closed after interrupt — expected, ignoring...');
+    return;
+  }
   logger.error('[Process] Uncaught Exception:', err);
 });
 

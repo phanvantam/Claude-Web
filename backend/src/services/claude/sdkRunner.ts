@@ -140,24 +140,36 @@ export async function runSDKQuery(
     }
   }, 5000);
 
-  // Watchdog: nếu SDK stream không kết thúc trong 90s sau event cuối → force interrupt.
-  // PM2/production environment thỉnh thoảng SDK hang — không emit result event.
+  // Watchdog: ép SDK trả result nếu stream treo sau event cuối.
+  // interrupt() đã chứng minh effective trên production — ép SDK emit result ngay.
+  // 15s sau event cuối: nếu không có tool/permission pending → interrupt.
+  // Nếu đang chờ tool/permission → skip, chờ tiếp.
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
-  let queryInstance: any = null; // Lưu reference để gọi interrupt()
-  const WATCHDOG_MS = 90_000;
+  let queryInstance: any = null;
+  const WATCHDOG_MS = 15_000;
   const resetWatchdog = () => {
     if (watchdogTimer) clearTimeout(watchdogTimer);
     watchdogTimer = setTimeout(async () => {
-      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >90s, force interrupting`);
+      // Skip nếu đang chờ user approve permission hoặc tool đang chạy
+      if (state.pendingPermission) {
+        logger.debug(`[Claude][${sessionId}] Watchdog skipped — pending permission`);
+        resetWatchdog();
+        return;
+      }
+      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >15s, force interrupting`);
       try {
         if (queryInstance) await queryInstance.interrupt();
-      } catch (e) {
-        logger.warn(`[Claude][${sessionId}] interrupt() failed, falling back to abort:`, e);
-        if (!abortController.signal.aborted) abortController.abort();
+      } catch (e: any) {
+        // interrupt() có thể gây 'Query closed before response received' — bỏ qua
+        if (e?.message?.includes('Query closed')) {
+          logger.debug(`[Claude][${sessionId}] Expected 'Query closed' after interrupt, ignoring`);
+        } else {
+          logger.warn(`[Claude][${sessionId}] interrupt() failed:`, e);
+        }
       }
     }, WATCHDOG_MS);
   };
-  resetWatchdog(); // bắt đầu đếm ngay khi query khởi động
+  resetWatchdog();
 
   // ── Turn context — tích lũy blocks từ TẤT CẢ assistant events thành 1 message ──
   const processor = new QueryProcessor(sessionId, state, emitter);
