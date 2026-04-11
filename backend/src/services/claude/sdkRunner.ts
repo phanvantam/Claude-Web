@@ -30,14 +30,18 @@ export async function runSDKQuery(
   const isResume = utils.hasCliSession(sessionId, config.cwd);
   logger.info(`[Claude] Session ${sessionId}: cliSessionExists=${isResume}, strategy=${isResume ? 'resume' : 'new'}`);
 
+  // claude-agent-sdk dùng interrupt() thay vì AbortController
+  // Giữ abortController cho internal state tracking (pendingPermission abort listener)
   const abortController = new AbortController();
   state.abortController = abortController;
 
-  // ── Build SDK options ──
+  // ── Build SDK options (claude-agent-sdk format) ──
   const options: Record<string, any> = {
-    abortController,
     cwd: config.cwd,
-    pathToClaudeCodeExecutable: utils.getClaudeBinary(),
+    // systemPrompt preset: bắt buộc để load CLAUDE.md
+    systemPrompt: { type: 'preset', preset: 'claude_code' },
+    // Load settings từ project, user (~/.config/claude/), local
+    settingSources: ['project', 'user', 'local'],
   };
 
   // Truyền MCP servers vào SDK — merge global + project
@@ -54,11 +58,6 @@ export async function runSDKQuery(
 
   if (isResume) options.resume = sessionId;
   if (config.model) options.model = config.model;
-
-  // Log stderr từ CLI — hữu ích cho debug
-  options.stderr = (data: string) => {
-    logger.error(`[Claude stderr][${sessionId}]`, data);
-  };
 
   // ── Permission mode ──
   // canUseTool LUÔN được set để intercept AskUserQuestion (cần UI tương tác bất kể mode).
@@ -119,30 +118,11 @@ export async function runSDKQuery(
     });
   };
 
-  // ── Extra CLI args ──
-  // SDK tự thêm prefix '--' vào key → key KHÔNG được có '--' prefix
-  const extraArgs: Record<string, string | null> = {};
+  // ── SDK-level options (thay cho extraArgs CLI) ──
+  if (config.effortLevel) options.effort = config.effortLevel;
+  if (config.systemPrompt) options.systemPrompt = config.systemPrompt;
 
-  if (config.effortLevel) extraArgs['effort'] = config.effortLevel;
-  if (config.maxBudgetUsd) extraArgs['max-budget-usd'] = config.maxBudgetUsd.toString();
-  if (config.systemPrompt) options.customSystemPrompt = config.systemPrompt;
-
-  // Custom args từ config — strip '--' prefix nếu user truyền sẵn
-  if (config.customArgs && config.customArgs.length > 0) {
-    for (let i = 0; i < config.customArgs.length; i += 2) {
-      let key = config.customArgs[i];
-      key = key.replace(/^--/, '');
-      const val = i + 1 < config.customArgs.length ? config.customArgs[i + 1] : null;
-      extraArgs[key] = val;
-    }
-  }
-
-  // Session ID: khi session mới (không resume) → truyền session-id qua extraArgs
-  if (!isResume) extraArgs['session-id'] = sessionId;
-  if (Object.keys(extraArgs).length > 0) options.extraArgs = extraArgs;
-
-  // ── Stream timeout + periodic save ──
-  // Set stream-close timeout — SDK mặc định 5s quá ngắn khi chờ user xác nhận permission
+  // claude-agent-sdk: set stream-close timeout qua env (SDK vẫn đọc env var này)
   const prevStreamTimeout = process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
   process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = '300000';
 
@@ -160,80 +140,22 @@ export async function runSDKQuery(
     }
   }, 5000);
 
-  // ── Watchdog 2 tầng ──
-  // Tầng 1 (IDLE): Sau khi đã nhận assistant content, nếu 15s không có event mới
-  //   → CLI đã trả response xong nhưng không emit result (bug CLI trên production).
-  //   → Tự tạo synthetic result, finalize message, giải phóng UI ngay.
-  //   → NHƯNG: skip nếu đang chờ permission/ask-user hoặc tool đang chạy.
-  // Tầng 2 (HARD): 90s không có event nào → force abort (safety net).
+  // Watchdog: nếu SDK stream không kết thúc trong 90s sau event cuối → force interrupt.
+  // PM2/production environment thỉnh thoảng SDK hang — không emit result event.
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
-  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let queryInstance: any = null; // Lưu reference để gọi interrupt()
   const WATCHDOG_MS = 90_000;
-  const IDLE_TIMEOUT_MS = 15_000;
-  // Flag: đã nhận được ít nhất 1 assistant event có content chưa
-  let hasReceivedAssistantContent = false;
-  // Flag: assistant event cuối cùng có chứa tool_use block → tool đang chạy, chưa nên timeout
-  let lastAssistantHadToolUse = false;
-
-  const clearAllTimers = () => {
-    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
-    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-  };
-
   const resetWatchdog = () => {
-    // Hard watchdog — luôn chạy
     if (watchdogTimer) clearTimeout(watchdogTimer);
-    watchdogTimer = setTimeout(() => {
-      logger.warn(`[Claude][${sessionId}] Hard watchdog triggered — SDK stream stuck >90s, force aborting`);
-      if (!abortController.signal.aborted) abortController.abort();
-    }, WATCHDOG_MS);
-
-    // Idle timer — chỉ chạy khi đã nhận assistant content
-    if (hasReceivedAssistantContent) {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        // Kiểm tra trước khi fire — có thể đang chờ interaction hoặc tool đang chạy
-        if (state.pendingPermission) {
-          // Đang chờ user approve permission hoặc trả lời AskUserQuestion
-          // → re-schedule, KHÔNG abort
-          logger.debug(`[Claude][${sessionId}] Idle timer skipped — pending permission/ask-user`);
-          resetWatchdog();
-          return;
-        }
-        if (lastAssistantHadToolUse) {
-          // Block cuối cùng là tool_use → tool đang chạy (có thể auto-allowed)
-          // → re-schedule, KHÔNG abort
-          logger.debug(`[Claude][${sessionId}] Idle timer skipped — tool execution in progress`);
-          resetWatchdog();
-          return;
-        }
-
-        logger.warn(`[Claude][${sessionId}] Idle timeout — no event for ${IDLE_TIMEOUT_MS / 1000}s after assistant content, synthesizing result`);
-        // Tạo synthetic result — giống handleResultEvent nhưng không cần sdkMsg
-        clearAllTimers();
-        if (ctx.turnBlocks.length > 0) {
-          const totalDurationMs = Date.now() - ctx.turnStartedAt;
-          const chatMsg: ChatMessage = {
-            id: ctx.turnMsgId,
-            role: 'assistant',
-            content: ctx.turnTextParts.join('\n'),
-            blocks: ctx.turnBlocks,
-            toolCalls: ctx.turnToolCalls.length > 0 ? ctx.turnToolCalls : undefined,
-            timestamp: new Date().toISOString(),
-            model: ctx.turnModel,
-            tokens: (ctx.turnTokensTotal.input > 0 || ctx.turnTokensTotal.output > 0) ? ctx.turnTokensTotal : undefined,
-            durationMs: totalDurationMs,
-          };
-          finalizeAssistantMessage(sessionId, chatMsg, state, emitter);
-          logger.info(`[Claude][${sessionId}] ✅ Synthetic finalized: ${ctx.turnBlocks.length} blocks`);
-        }
-        state.isProcessing = false;
-        state.pendingPermission = undefined;
-        emitter.emit('status', { sessionId, status: 'idle' });
-        // Abort stream để giải phóng CLI process
+    watchdogTimer = setTimeout(async () => {
+      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >90s, force interrupting`);
+      try {
+        if (queryInstance) await queryInstance.interrupt();
+      } catch (e) {
+        logger.warn(`[Claude][${sessionId}] interrupt() failed, falling back to abort:`, e);
         if (!abortController.signal.aborted) abortController.abort();
-      }, IDLE_TIMEOUT_MS);
-    }
+      }
+    }, WATCHDOG_MS);
   };
   resetWatchdog(); // bắt đầu đếm ngay khi query khởi động
 
@@ -252,26 +174,15 @@ export async function runSDKQuery(
     subAgentActivities: [] as SubAgentActivity[],
   };
 
-  // Wrap prompt thành AsyncIterable — BẮT BUỘC khi dùng canUseTool
-  async function* createPromptStream() {
-    yield {
-      type: 'user' as const,
-      session_id: sessionId,
-      message: { role: 'user' as const, content: message },
-      parent_tool_use_id: null,
-    };
-    // Cho phép generator kết thúc ở đây. 
-    // Nếu để await thêm promise thì SDK sẽ treo vì chờ tiếp input từ stdin.
-  }
-
   const startTime = Date.now();
   const getElapsed = () => `${Date.now() - startTime}ms`;
 
   try {
-    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Preparing sdk.query...`);
-    const queryResult = sdk.query({ prompt: createPromptStream(), options });
+    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Starting sdk.query (string prompt)...`);
+    // claude-agent-sdk: dùng string prompt trực tiếp, SDK tự đóng stdin → không treo pipe
+    queryInstance = sdk.query({ prompt: message, options });
 
-    // Restore stream timeout env sau khi query bắt đầu
+    // Restore stream timeout env sau khi query bắt đầu (Query constructor đã bắt giá trị)
     if (prevStreamTimeout !== undefined) {
       process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = prevStreamTimeout;
     } else {
@@ -281,7 +192,7 @@ export async function runSDKQuery(
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] sdk.query initiated, starting for-await loop`);
 
     let eventCount = 0;
-    for await (const sdkMsg of queryResult) {
+    for await (const sdkMsg of queryInstance) {
       eventCount++;
       const type = sdkMsg.type as string;
       logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
@@ -304,22 +215,11 @@ export async function runSDKQuery(
 
         case 'assistant': {
           handleAssistantEvent(sdkMsg, sessionId, state, emitter, processor, ctx);
-          // Cập nhật flag: assistant event cuối có chứa tool_use không?
-          // Dùng để idle timer biết tool đang chạy → không fire sớm.
-          const lastBlock = ctx.turnBlocks[ctx.turnBlocks.length - 1];
-          lastAssistantHadToolUse = lastBlock?.type === 'tool_use';
-          // Bật idle timer sau khi nhận assistant content — detect CLI treo sau response
-          if (!hasReceivedAssistantContent && ctx.turnBlocks.length > 0) {
-            hasReceivedAssistantContent = true;
-            logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Assistant content received — idle timer activated (${IDLE_TIMEOUT_MS / 1000}s)`);
-          }
           break;
         }
 
         case 'user': {
           // SDK trả user event chứa tool_result — cần xử lý cho sub-agent
-          // Reset flag tool_use vì tool đã trả kết quả
-          lastAssistantHadToolUse = false;
           const uMsg = (sdkMsg as any).message;
           if (uMsg?.content) {
             const blocks = Array.isArray(uMsg.content) ? uMsg.content : [uMsg.content];
@@ -331,10 +231,10 @@ export async function runSDKQuery(
         }
 
         case 'result': {
-          // Nhận result → clear TẤT CẢ timers ngay
-          clearAllTimers();
+          // Nhận result → clear watchdog ngay
+          if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
           logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Final result event received`);
-          handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, abortController);
+          handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, queryInstance);
           break;
         }
 
@@ -353,8 +253,8 @@ export async function runSDKQuery(
       throw err;
     }
   } finally {
-    // Dọn dẹp TẤT CẢ timers bất kể thoát kiểu gì
-    clearAllTimers();
+    // Dọn dẹp watchdog bất kể thoát kiểu gì
+    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
     clearInterval(saveInterval);
     state.abortController = undefined;
     state.pendingPermission = undefined;
@@ -456,7 +356,7 @@ function handleResultEvent(
   state: ClaudeSessionState,
   emitter: EventEmitter,
   ctx: any,
-  abortController: AbortController,
+  queryInstance: any,
 ): void {
   const result = sdkMsg as any;
   const costUsd = result.total_cost_usd || 0;
@@ -523,8 +423,8 @@ function handleResultEvent(
   state.pendingPermission = undefined;
   emitter.emit('status', { sessionId, status: 'idle' });
 
-  // Abort stream sau khi xong — cleanup resources
-  if (!abortController.signal.aborted) {
-    abortController.abort();
-  }
+  // Interrupt stream sau khi xong — cleanup resources (claude-agent-sdk)
+  try {
+    if (queryInstance) queryInstance.interrupt();
+  } catch { /* ignore — stream có thể đã kết thúc */ }
 }

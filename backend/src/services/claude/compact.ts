@@ -69,8 +69,9 @@ async function compactFromMessages(
   // Gọi SDK query đơn giản — không resume, không canUseTool, session tạm
   const options: Record<string, any> = {
     cwd: project.path,
-    pathToClaudeCodeExecutable: utils.getClaudeBinary(),
     permissionMode: 'plan', // Plan mode — không cần permission
+    systemPrompt: { type: 'preset', preset: 'claude_code' },
+    settingSources: ['project', 'user', 'local'],
   };
 
   let summaryText = '';

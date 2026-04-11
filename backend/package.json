@@ -14,7 +14,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@anthropic-ai/claude-code": "1.0.108",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.101",
     "better-sqlite3": "^12.8.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",

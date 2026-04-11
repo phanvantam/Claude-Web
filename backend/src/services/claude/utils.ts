@@ -44,9 +44,9 @@ export function getClaudeBinary(): string {
 
 let sdkModule: any = null;
 
-/** Lazy-load @anthropic-ai/claude-code SDK (ESM package trong CJS context) */
+/** Lazy-load @anthropic-ai/claude-agent-sdk (ESM package trong CJS context) */
 export async function getSDK(): Promise<any> {
-  if (!sdkModule) sdkModule = await import('@anthropic-ai/claude-code');
+  if (!sdkModule) sdkModule = await import('@anthropic-ai/claude-agent-sdk');
   return sdkModule;
 }
 

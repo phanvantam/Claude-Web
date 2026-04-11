@@ -37,6 +37,7 @@ echo ""
 echo "[4/6] Installing backend dependencies..."
 cd "$BACKEND_DIR"
 npm install --prefer-offline
+npm run build
 
 # ── 5. Xóa nginx proxy cache (nếu có) ──
 echo ""
