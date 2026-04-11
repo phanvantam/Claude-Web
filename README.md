@@ -69,12 +69,17 @@ Kết quả build sẽ nằm trong thư mục `frontend/dist`.
 
 ### 2. Chuẩn bị Backend
 
-Đảm bảo backend có thể phục vụ file tĩnh từ frontend:
+Trên server, sau khi `git pull`, **bắt buộc** phải cài đặt lại dependencies để native module được build đúng cho hệ điều hành của server:
 
 ```bash
-cd backend
-npm run build # Nếu bạn muốn chạy bản JS thuần
+cd /var/www/Claude-Web/backend
+npm install
+
+cd /var/www/Claude-Web/frontend
+npm install
 ```
+
+> **Lưu ý**: `node_modules/` không được push lên Git. Gói `better-sqlite3` là native module (C++ addon) — phải được build trực tiếp trên server (Linux), không thể dùng binary đã build sẵn trên macOS.
 
 ### 3. Khởi chạy Server
 

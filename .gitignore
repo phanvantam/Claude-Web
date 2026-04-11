@@ -1,11 +1,22 @@
 **/CLAUDE.md
 !/CLAUDE.md
 
+# Dependencies — không push, server tự npm install
+node_modules/
+
+# Build output
+frontend/dist/
+backend/dist/
+
 # SQLite database files
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db
 
 # Dữ liệu JSON cũ
 backend/data/*.json
 backend/data/sessions/
+
+# Claude internals
+.claude/worktrees/
