@@ -51,6 +51,8 @@ export const sessionsApi = {
   delete: (id: string) => fetchJSON<void>(`/sessions/${id}`, { method: 'DELETE' }),
   /** Lấy danh sách sessionId đang xử lý (processing) */
   getActive: () => fetchJSON<{ processing: string[] }>('/sessions/active'),
+  /** Kiểm tra trạng thái xử lý của session — fallback khi WebSocket event bị mất */
+  getSessionStatus: (sessionId: string) => fetchJSON<{ isProcessing: boolean }>(`/sessions/${sessionId}/status`),
 
   /**
    * Lấy messages phân trang (cursor-based).

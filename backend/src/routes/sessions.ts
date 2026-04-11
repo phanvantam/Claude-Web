@@ -19,6 +19,19 @@ router.get('/active', (_req, res) => {
 });
 
 /**
+ * GET /api/sessions/:id/status — Trả isProcessing realtime.
+ * Dùng làm fallback khi WebSocket event bị mất qua nginx proxy.
+ */
+router.get('/:id/status', (req, res) => {
+  try {
+    const state = claudeService.getSessionState(req.params.id);
+    res.json({ isProcessing: state?.isProcessing ?? false });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/sessions/:id/subagents — Danh sách sub-agents đã chạy trong session.
  * Đọc từ filesystem: ~/.claude/projects/<encoded-cwd>/<sessionId>/subagents/
  * Lưu ý: route cụ thể này phải đặt TRƯỚC /:id generic để Express match đúng.

@@ -17,11 +17,19 @@ const httpServer = createServer(app);
 // Disable ETag globally to prevent caching based on content hash
 app.set('etag', false);
 
+// Production: frontend được serve từ cùng origin (nginx proxy) → không cần whitelist.
+// Dev: cần whitelist localhost ports.
+const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    origin: isDev ? ['http://localhost:5173', 'http://localhost:3000'] : true,
     methods: ['GET', 'POST'],
   },
+  // Ưu tiên WebSocket trước — tránh polling overhead qua nginx
+  transports: ['websocket', 'polling'],
+  // Tăng ping timeout để tránh false disconnect khi nginx proxy chậm
+  pingTimeout: 30000,
+  pingInterval: 15000,
 });
 
 // Middleware
@@ -66,7 +74,7 @@ io.on('connection', (socket) => {
         }
       }
       socket.join(sessionId);
-      
+
       // Push current state (messages loaded from disk or memory)
       const state = claudeService.getSessionState(sessionId);
       logger.info(`[Socket] session:started emitting: sessionId=${sessionId}, messages=${state?.messages?.length || 0}`);
@@ -238,6 +246,10 @@ claudeService.on('stream:partial', (data) => {
 });
 
 claudeService.on('status', (data) => {
+  // Log chi tiết khi chuyển status — quan trọng cho debug production
+  if (data.status === 'idle' || data.status === 'initializing') {
+    logger.info(`[EventForward] chat:status ${data.status} → session ${data.sessionId}`);
+  }
   io.to(data.sessionId).emit('chat:status', data);
   // Gửi trạng thái toàn cục cho mọi client — dùng cho Sidebar
   io.emit('global:session_status', {

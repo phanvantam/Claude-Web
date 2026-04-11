@@ -229,21 +229,44 @@ export function useChat(): UseChatReturn {
           setStreamingContent('');
           streamingRef.current = '';
 
-          // Safety idle timer: nếu backend không emit chat:status idle trong 3s
-          // (ví dụ mạng bị gián đoạn), tự reset status để tránh UI treo "Đang xử lý"
+          // Safety fallback: nếu backend không emit chat:status idle trong 5s,
+          // gọi REST API xác nhận trạng thái thực tế trước khi force reset.
+          // Tránh false positive khi Claude vẫn đang xử lý tiếp (multi-turn tools).
           if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = setTimeout(() => {
-            setStatus((cur) => {
-              if (cur !== 'idle') {
-                console.warn('[useChat] Safety idle timeout triggered — forcing status=idle');
-                setProcessingStartedAt(null);
-                setActiveSubAgent(null);
-                return 'idle';
+          idleTimeoutRef.current = setTimeout(async () => {
+            const sid = sessionIdRef.current;
+            if (!sid) { idleTimeoutRef.current = null; return; }
+
+            try {
+              // Xác nhận qua REST — nguồn sự thật duy nhất
+              const { isProcessing } = await sessionsApi.getSessionStatus(sid);
+              if (!isProcessing) {
+                setStatus((cur) => {
+                  if (cur !== 'idle') {
+                    console.warn('[useChat] Fallback poll confirmed idle — forcing status=idle');
+                    setProcessingStartedAt(null);
+                    setActiveSubAgent(null);
+                    return 'idle';
+                  }
+                  return cur;
+                });
+              } else {
+                console.log('[useChat] Fallback poll: backend still processing, keeping status');
               }
-              return cur;
-            });
+            } catch (err) {
+              // REST API fail → fallback về force idle (giữ behavior cũ)
+              console.warn('[useChat] Fallback poll failed, forcing idle:', err);
+              setStatus((cur) => {
+                if (cur !== 'idle') {
+                  setProcessingStartedAt(null);
+                  setActiveSubAgent(null);
+                  return 'idle';
+                }
+                return cur;
+              });
+            }
             idleTimeoutRef.current = null;
-          }, 3000);
+          }, 5000);
         }
       }
 
