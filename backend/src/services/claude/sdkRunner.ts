@@ -188,12 +188,7 @@ export async function runSDKQuery(
     subAgentActivities: [] as SubAgentActivity[],
   };
 
-  // Wrap prompt thành AsyncIterable — BẮT BUỘC khi dùng canUseTool.
-  // Generator PHẢI giữ mở (không return) cho đến khi nhận result hoặc bị abort.
-  // Nếu generator kết thúc quá sớm, SDK có thể đóng stdin CLI trước khi tool execution xong
-  // → mất khả năng canUseTool intercept.
-  // Nhưng nếu giữ mở vô thời hạn → SDK stream treo trên non-TTY (production).
-  // Giải pháp: chờ abort signal — abort được gọi ngay sau khi nhận result event.
+  // Wrap prompt thành AsyncIterable — BẮT BUỘC khi dùng canUseTool
   async function* createPromptStream() {
     yield {
       type: 'user' as const,
@@ -201,15 +196,15 @@ export async function runSDKQuery(
       message: { role: 'user' as const, content: message },
       parent_tool_use_id: null,
     };
-    // Giữ generator mở cho đến khi abort — cần thiết cho canUseTool hoạt động.
-    // Abort sẽ được trigger ngay khi nhận result event (xem case 'result' bên dưới).
-    await new Promise<void>((resolve) => {
-      if (abortController.signal.aborted) { resolve(); return; }
-      abortController.signal.addEventListener('abort', () => resolve(), { once: true });
-    });
+    // Cho phép generator kết thúc ở đây. 
+    // Nếu để await thêm promise thì SDK sẽ treo vì chờ tiếp input từ stdin.
   }
 
+  const startTime = Date.now();
+  const getElapsed = () => `${Date.now() - startTime}ms`;
+
   try {
+    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Preparing sdk.query...`);
     const queryResult = sdk.query({ prompt: createPromptStream(), options });
 
     // Restore stream timeout env sau khi query bắt đầu
@@ -219,21 +214,26 @@ export async function runSDKQuery(
       delete process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
     }
 
+    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] sdk.query initiated, starting for-await loop`);
+
+    let eventCount = 0;
     for await (const sdkMsg of queryResult) {
+      eventCount++;
       const type = sdkMsg.type as string;
-      logger.debug(`[Claude][${sessionId}] SDK Event: ${type}`);
+      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
+      
       // Reset watchdog mỗi khi nhận được event — stream vẫn đang sống
       resetWatchdog();
 
       switch (type) {
         case 'system': {
-          logger.info(`[Claude] System init, session: ${sdkMsg.session_id}, model: ${sdkMsg.model}`);
+          logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] System init details: session=${sdkMsg.session_id}, model=${sdkMsg.model}`);
           emitter.emit('system', { sessionId, data: sdkMsg });
           emitter.emit('status', { sessionId, status: 'thinking', startedAt: state.processingStartedAt });
           // Lấy model từ system event đầu tiên
           if (sdkMsg.model && !state.model) {
             state.model = sdkMsg.model;
-            try { updateSession(sessionId, { model: state.model }); } catch {}
+            try { updateSession(sessionId, { model: state.model }); } catch { }
           }
           break;
         }
@@ -256,14 +256,10 @@ export async function runSDKQuery(
         }
 
         case 'result': {
-          // Nhận result → clear watchdog, xử lý, rồi THOÁT loop ngay.
-          // QUAN TRỌNG: phải break khỏi for-await, không chỉ break khỏi switch.
-          // Trên production (non-TTY), SDK iterator có thể không tự kết thúc
-          // sau result event → for-await treo vĩnh viễn tại .next() call.
+          // Nhận result → clear watchdog ngay, không cần chờ 90s
           if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+          logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Final result event received`);
           handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, abortController);
-          // handleResultEvent đã gọi abort() → generator close → nhưng iterator
-          // vẫn có thể chờ .next(). Dùng break trực tiếp để thoát for-await loop.
           break;
         }
 
@@ -272,14 +268,8 @@ export async function runSDKQuery(
           break;
         }
       }
-
-      // Thoát for-await loop ngay sau khi xử lý result event.
-      // break bên trong switch chỉ thoát switch, không thoát for-await.
-      if (type === 'result') {
-        logger.info(`[Claude][${sessionId}] Breaking out of for-await loop after result event`);
-        break;
-      }
     }
+    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] for-await loop finished naturally`);
   } catch (err: any) {
     // Phân biệt abort error (user chủ động) vs runtime error
     if (err.name === 'AbortError' || abortController.signal.aborted) {
@@ -378,7 +368,7 @@ function handleAssistantEvent(
   // Cập nhật model cho session
   if (ctx.turnModel && !state.model) {
     state.model = ctx.turnModel;
-    try { updateSession(sessionId, { model: state.model }); } catch {}
+    try { updateSession(sessionId, { model: state.model }); } catch { }
   }
 }
 
