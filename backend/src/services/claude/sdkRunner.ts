@@ -160,6 +160,19 @@ export async function runSDKQuery(
     }
   }, 5000);
 
+  // Watchdog: nếu SDK stream không kết thúc trong 90s sau event cuối → force abort.
+  // PM2/production environment thỉnh thoảng SDK hang — không emit result event.
+  let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  const WATCHDOG_MS = 90_000;
+  const resetWatchdog = () => {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(() => {
+      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >90s, force aborting`);
+      if (!abortController.signal.aborted) abortController.abort();
+    }, WATCHDOG_MS);
+  };
+  resetWatchdog(); // bắt đầu đếm ngay khi query khởi động
+
   // ── Turn context — tích lũy blocks từ TẤT CẢ assistant events thành 1 message ──
   const processor = new QueryProcessor(sessionId, state, emitter);
   const ctx = {
@@ -202,6 +215,8 @@ export async function runSDKQuery(
     for await (const sdkMsg of queryResult) {
       const type = sdkMsg.type as string;
       logger.debug(`[Claude][${sessionId}] SDK Event: ${type}`);
+      // Reset watchdog mỗi khi nhận được event — stream vẫn đang sống
+      resetWatchdog();
 
       switch (type) {
         case 'system': {
@@ -234,6 +249,8 @@ export async function runSDKQuery(
         }
 
         case 'result': {
+          // Nhận result → clear watchdog ngay, không cần chờ 90s
+          if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
           handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, abortController);
           break;
         }
@@ -252,10 +269,13 @@ export async function runSDKQuery(
       throw err;
     }
   } finally {
+    // Dọn dẹp watchdog bất kể thoát kiểu gì
+    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
     clearInterval(saveInterval);
     state.abortController = undefined;
     state.pendingPermission = undefined;
     if (state.isProcessing) {
+      logger.warn(`[Claude][${sessionId}] finally: isProcessing still true — forcing idle`);
       state.isProcessing = false;
       emitter.emit('status', { sessionId, status: 'idle' });
     }
