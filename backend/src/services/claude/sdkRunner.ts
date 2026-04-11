@@ -71,13 +71,12 @@ export async function runSDKQuery(
     input: Record<string, unknown>,
     { signal }: { signal: AbortSignal },
   ) => {
-    const getElapsed = () => `${Date.now() - (state.processingStartedAt || Date.now())}ms`;
-    logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] canUseTool called for: ${toolName}`);
+    logger.info(`[Claude][${sessionId}] canUseTool called for: ${toolName}`);
     emitter.emit('status', { sessionId, status: 'tool_use', toolName });
 
     // AskUserQuestion — LUÔN chờ user trả lời, bất kể permission mode
     if (toolName === 'AskUserQuestion') {
-      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] AskUserQuestion detected, emitting askUser:question`);
+      logger.info(`[Claude][${sessionId}] AskUserQuestion detected, emitting askUser:question`);
       return new Promise<any>((resolve) => {
         if (signal.aborted) {
           return resolve({ behavior: 'deny', message: 'Đã hủy.' });
@@ -98,7 +97,6 @@ export async function runSDKQuery(
 
     // Mode không phải 'default' → auto allow cho các tool thông thường
     if (!isDefaultMode) {
-      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Auto-allowing tool: ${toolName}`);
       return { behavior: 'allow' as const, updatedInput: input };
     }
 
@@ -108,7 +106,6 @@ export async function runSDKQuery(
         return resolve({ behavior: 'deny', message: 'Đã hủy.' });
       }
 
-      logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Requesting permission for: ${toolName}`);
       state.pendingPermission = { toolName, input, resolve };
       emitter.emit('permission:request', { sessionId, toolName, input });
 
@@ -163,16 +160,80 @@ export async function runSDKQuery(
     }
   }, 5000);
 
-  // Watchdog: nếu SDK stream không kết thúc trong 90s sau event cuối → force abort.
-  // PM2/production environment thỉnh thoảng SDK hang — không emit result event.
+  // ── Watchdog 2 tầng ──
+  // Tầng 1 (IDLE): Sau khi đã nhận assistant content, nếu 15s không có event mới
+  //   → CLI đã trả response xong nhưng không emit result (bug CLI trên production).
+  //   → Tự tạo synthetic result, finalize message, giải phóng UI ngay.
+  //   → NHƯNG: skip nếu đang chờ permission/ask-user hoặc tool đang chạy.
+  // Tầng 2 (HARD): 90s không có event nào → force abort (safety net).
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
   const WATCHDOG_MS = 90_000;
+  const IDLE_TIMEOUT_MS = 15_000;
+  // Flag: đã nhận được ít nhất 1 assistant event có content chưa
+  let hasReceivedAssistantContent = false;
+  // Flag: assistant event cuối cùng có chứa tool_use block → tool đang chạy, chưa nên timeout
+  let lastAssistantHadToolUse = false;
+
+  const clearAllTimers = () => {
+    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  };
+
   const resetWatchdog = () => {
+    // Hard watchdog — luôn chạy
     if (watchdogTimer) clearTimeout(watchdogTimer);
     watchdogTimer = setTimeout(() => {
-      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >90s, force aborting`);
+      logger.warn(`[Claude][${sessionId}] Hard watchdog triggered — SDK stream stuck >90s, force aborting`);
       if (!abortController.signal.aborted) abortController.abort();
     }, WATCHDOG_MS);
+
+    // Idle timer — chỉ chạy khi đã nhận assistant content
+    if (hasReceivedAssistantContent) {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        // Kiểm tra trước khi fire — có thể đang chờ interaction hoặc tool đang chạy
+        if (state.pendingPermission) {
+          // Đang chờ user approve permission hoặc trả lời AskUserQuestion
+          // → re-schedule, KHÔNG abort
+          logger.debug(`[Claude][${sessionId}] Idle timer skipped — pending permission/ask-user`);
+          resetWatchdog();
+          return;
+        }
+        if (lastAssistantHadToolUse) {
+          // Block cuối cùng là tool_use → tool đang chạy (có thể auto-allowed)
+          // → re-schedule, KHÔNG abort
+          logger.debug(`[Claude][${sessionId}] Idle timer skipped — tool execution in progress`);
+          resetWatchdog();
+          return;
+        }
+
+        logger.warn(`[Claude][${sessionId}] Idle timeout — no event for ${IDLE_TIMEOUT_MS / 1000}s after assistant content, synthesizing result`);
+        // Tạo synthetic result — giống handleResultEvent nhưng không cần sdkMsg
+        clearAllTimers();
+        if (ctx.turnBlocks.length > 0) {
+          const totalDurationMs = Date.now() - ctx.turnStartedAt;
+          const chatMsg: ChatMessage = {
+            id: ctx.turnMsgId,
+            role: 'assistant',
+            content: ctx.turnTextParts.join('\n'),
+            blocks: ctx.turnBlocks,
+            toolCalls: ctx.turnToolCalls.length > 0 ? ctx.turnToolCalls : undefined,
+            timestamp: new Date().toISOString(),
+            model: ctx.turnModel,
+            tokens: (ctx.turnTokensTotal.input > 0 || ctx.turnTokensTotal.output > 0) ? ctx.turnTokensTotal : undefined,
+            durationMs: totalDurationMs,
+          };
+          finalizeAssistantMessage(sessionId, chatMsg, state, emitter);
+          logger.info(`[Claude][${sessionId}] ✅ Synthetic finalized: ${ctx.turnBlocks.length} blocks`);
+        }
+        state.isProcessing = false;
+        state.pendingPermission = undefined;
+        emitter.emit('status', { sessionId, status: 'idle' });
+        // Abort stream để giải phóng CLI process
+        if (!abortController.signal.aborted) abortController.abort();
+      }, IDLE_TIMEOUT_MS);
+    }
   };
   resetWatchdog(); // bắt đầu đếm ngay khi query khởi động
 
@@ -224,7 +285,7 @@ export async function runSDKQuery(
       eventCount++;
       const type = sdkMsg.type as string;
       logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
-      
+
       // Reset watchdog mỗi khi nhận được event — stream vẫn đang sống
       resetWatchdog();
 
@@ -243,11 +304,22 @@ export async function runSDKQuery(
 
         case 'assistant': {
           handleAssistantEvent(sdkMsg, sessionId, state, emitter, processor, ctx);
+          // Cập nhật flag: assistant event cuối có chứa tool_use không?
+          // Dùng để idle timer biết tool đang chạy → không fire sớm.
+          const lastBlock = ctx.turnBlocks[ctx.turnBlocks.length - 1];
+          lastAssistantHadToolUse = lastBlock?.type === 'tool_use';
+          // Bật idle timer sau khi nhận assistant content — detect CLI treo sau response
+          if (!hasReceivedAssistantContent && ctx.turnBlocks.length > 0) {
+            hasReceivedAssistantContent = true;
+            logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Assistant content received — idle timer activated (${IDLE_TIMEOUT_MS / 1000}s)`);
+          }
           break;
         }
 
         case 'user': {
           // SDK trả user event chứa tool_result — cần xử lý cho sub-agent
+          // Reset flag tool_use vì tool đã trả kết quả
+          lastAssistantHadToolUse = false;
           const uMsg = (sdkMsg as any).message;
           if (uMsg?.content) {
             const blocks = Array.isArray(uMsg.content) ? uMsg.content : [uMsg.content];
@@ -259,8 +331,8 @@ export async function runSDKQuery(
         }
 
         case 'result': {
-          // Nhận result → clear watchdog ngay, không cần chờ 90s
-          if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+          // Nhận result → clear TẤT CẢ timers ngay
+          clearAllTimers();
           logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Final result event received`);
           handleResultEvent(sdkMsg, sessionId, state, emitter, ctx, abortController);
           break;
@@ -281,8 +353,8 @@ export async function runSDKQuery(
       throw err;
     }
   } finally {
-    // Dọn dẹp watchdog bất kể thoát kiểu gì
-    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+    // Dọn dẹp TẤT CẢ timers bất kể thoát kiểu gì
+    clearAllTimers();
     clearInterval(saveInterval);
     state.abortController = undefined;
     state.pendingPermission = undefined;
@@ -312,8 +384,7 @@ function handleAssistantEvent(
   const apiMsg = sdkMsg.message;
   if (!apiMsg || !apiMsg.content) return;
 
-  const elapsed = Date.now() - (state.processingStartedAt || Date.now());
-  logger.info(`[Claude][${sessionId}] [T+${elapsed}ms] assistant event: ${JSON.stringify(apiMsg)}`);
+  logger.info(`[Claude][${sessionId}] assistant event (accumulated ${ctx.turnBlocks.length} blocks so far)`);
 
   // Lấy ID từ API event đầu tiên
   if (apiMsg.id && ctx.turnMsgId.startsWith('turn-')) ctx.turnMsgId = apiMsg.id;
