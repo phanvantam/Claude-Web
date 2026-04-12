@@ -140,36 +140,37 @@ export async function runSDKQuery(
     }
   }, 5000);
 
-  // Watchdog: ép SDK trả result nếu stream treo sau event cuối.
-  // interrupt() đã chứng minh effective trên production — ép SDK emit result ngay.
-  // 15s sau event cuối: nếu không có tool/permission pending → interrupt.
-  // Nếu đang chờ tool/permission → skip, chờ tiếp.
+  // Watchdog 2 tầng: ép SDK trả result nếu CLI treo (Linux không tự exit).
+  // - NGẮN (3s): sau assistant chỉ có text/thinking → khả năng cao là response cuối
+  // - DÀI (15s): sau tool_use, system, user → tool đang chạy, cần thời gian
+  // - SKIP: nếu đang chờ permission/AskUser → không giới hạn
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   let queryInstance: any = null;
-  const WATCHDOG_MS = 15_000;
-  const resetWatchdog = () => {
+  const WATCHDOG_SHORT_MS = 3_000;
+  const WATCHDOG_LONG_MS = 15_000;
+
+  const resetWatchdog = (ms: number = WATCHDOG_LONG_MS) => {
     if (watchdogTimer) clearTimeout(watchdogTimer);
     watchdogTimer = setTimeout(async () => {
-      // Skip nếu đang chờ user approve permission hoặc tool đang chạy
+      // Skip nếu đang chờ user approve permission hoặc trả lời câu hỏi
       if (state.pendingPermission) {
         logger.debug(`[Claude][${sessionId}] Watchdog skipped — pending permission`);
-        resetWatchdog();
+        resetWatchdog(WATCHDOG_LONG_MS);
         return;
       }
-      logger.warn(`[Claude][${sessionId}] Watchdog triggered — SDK stream stuck >15s, force interrupting`);
+      logger.warn(`[Claude][${sessionId}] Watchdog triggered (${ms}ms) — force interrupting`);
       try {
         if (queryInstance) await queryInstance.interrupt();
       } catch (e: any) {
-        // interrupt() có thể gây 'Query closed before response received' — bỏ qua
-        if (e?.message?.includes('Query closed')) {
-          logger.debug(`[Claude][${sessionId}] Expected 'Query closed' after interrupt, ignoring`);
+        if (e?.message?.includes('Query closed') || e?.message?.includes('ProcessTransport')) {
+          logger.debug(`[Claude][${sessionId}] Expected error after interrupt, ignoring`);
         } else {
           logger.warn(`[Claude][${sessionId}] interrupt() failed:`, e);
         }
       }
-    }, WATCHDOG_MS);
+    }, ms);
   };
-  resetWatchdog();
+  resetWatchdog(WATCHDOG_LONG_MS);
 
   // ── Turn context — tích lũy blocks từ TẤT CẢ assistant events thành 1 message ──
   const processor = new QueryProcessor(sessionId, state, emitter);
@@ -209,11 +210,10 @@ export async function runSDKQuery(
       const type = sdkMsg.type as string;
       logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
 
-      // Reset watchdog mỗi khi nhận được event — stream vẫn đang sống
-      resetWatchdog();
-
       switch (type) {
         case 'system': {
+          // System init — chờ tiếp, dùng watchdog dài
+          resetWatchdog(WATCHDOG_LONG_MS);
           logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] System init details: session=${sdkMsg.session_id}, model=${sdkMsg.model}`);
           emitter.emit('system', { sessionId, data: sdkMsg });
           emitter.emit('status', { sessionId, status: 'thinking', startedAt: state.processingStartedAt });
@@ -227,10 +227,19 @@ export async function runSDKQuery(
 
         case 'assistant': {
           handleAssistantEvent(sdkMsg, sessionId, state, emitter, processor, ctx);
+
+          // Phân loại assistant event để chọn watchdog phù hợp:
+          // - Có tool_use → tool sắp chạy, cần thời gian → watchdog dài
+          // - Chỉ text/thinking → khả năng cao là response cuối → watchdog ngắn
+          const apiContent = (sdkMsg as any).message?.content;
+          const hasToolUse = Array.isArray(apiContent) && apiContent.some((b: any) => b.type === 'tool_use');
+          resetWatchdog(hasToolUse ? WATCHDOG_LONG_MS : WATCHDOG_SHORT_MS);
           break;
         }
 
         case 'user': {
+          // Tool result trả về → có thể còn tiếp → watchdog dài
+          resetWatchdog(WATCHDOG_LONG_MS);
           // SDK trả user event chứa tool_result — cần xử lý cho sub-agent
           const uMsg = (sdkMsg as any).message;
           if (uMsg?.content) {
@@ -251,6 +260,7 @@ export async function runSDKQuery(
         }
 
         default: {
+          resetWatchdog(WATCHDOG_LONG_MS);
           emitter.emit('raw', { sessionId, event: sdkMsg });
           break;
         }
