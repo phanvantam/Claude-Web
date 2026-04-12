@@ -71,7 +71,7 @@ export function finalizeAssistantMessage(
   }
 
   // Message hoàn toàn mới
-  logger.info(`[Claude] ✅ Finalizing assistant message for ${sessionId}: id=${chatMsg.id}, contentLen=${chatMsg.content?.length || 0}, blocks=${chatMsg.blocks?.length || 0}`);
+  logger.info(`[Claude] Finalizing assistant message for ${sessionId}: id=${chatMsg.id}, contentLen=${chatMsg.content?.length || 0}, blocks=${chatMsg.blocks?.length || 0}`);
 
   try {
     state.messages.push(chatMsg);

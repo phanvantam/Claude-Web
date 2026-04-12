@@ -11,7 +11,8 @@ Tài liệu này quy định các quy tắc và tiêu chuẩn bắt buộc khi b
 
 ## 🛠 Tiêu chuẩn Kỹ thuật (Technical Standards)
 
-*   **SDK-First**: Ưu tiên sử dụng `@anthropic-ai/claude-agent-sdk` để tương tác với Claude thay vì gọi lệnh CLI thô (spawn).
+*   **SDK-First**: Ưu tiên sử dụng `@anthropic-ai/claude-agent-sdk` để tương tác với Claude thay vì gọi lệnh CLI thô (spawn). Trước khi thực hiện bất kỳ thay đổi nào liên quan đến SDK này, **phải hỏi mcp context7** để biết cách sử dụng đúng, tránh dùng sai.
+*   **No Redundancy**: Không được viết code xử lý lại những gì SDK đã làm (như tự đếm turn, tự quản lý nén ngữ cảnh - context compaction). Hãy để SDK tự trả về kết quả và xử lý events.
 *   **Duy trì Session**: Luôn đồng bộ `sessionId` với thư mục lưu trữ của Claude CLI (`~/.claude/projects/`). Không được tạo session tùy tiện làm rác máy người dùng.
 *   **UI/UX (Level 3 Path)**: 
     *   Mọi Tool Call mới phải được hỗ trợ hiển thị trong `ToolCallCard.tsx`.

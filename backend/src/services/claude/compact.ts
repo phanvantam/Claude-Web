@@ -1,3 +1,15 @@
+/**
+ * @deprecated — Dự kiến loại bỏ trong phiên bản tới.
+ *
+ * SDK đã tích hợp cơ chế auto-compact:
+ * - Tự nén khi context vượt ngưỡng token.
+ * - Phát event `compact_boundary` (đã xử lý trong sdkRunner.ts).
+ * - Giữ nguyên session, không cần tạo session mới.
+ *
+ * File này chỉ còn giữ lại cho tương thích ngược.
+ * Dùng `/compact` trong prompt → SDK tự xử lý thay vì gọi hàm này.
+ */
+
 import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage } from '../../types';
 import { getProject } from '../project';
@@ -7,6 +19,8 @@ import { ClaudeSessionState } from './types';
 import * as utils from './utils';
 
 /**
+ * @deprecated — SDK đã tự nén context. Xem sdkRunner.ts → event compact_boundary.
+ *
  * Nén context hội thoại (compact).
  * Flow: Gọi SDK tóm tắt hội thoại hiện tại → tạo session mới → chèn bản tóm tắt.
  * Trả về sessionId mới nếu thành công, throw nếu thất bại.

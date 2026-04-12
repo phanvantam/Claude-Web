@@ -20,13 +20,19 @@ import {
 import type { ToolCall } from '../../types';
 
 interface ToolCallCardProps {
-  toolCall: ToolCall;
+  toolCall: ToolCall & { streamingInput?: string };
   /**
    * true khi tool block thuộc message đã finalized (không phải streaming).
    * Tool không có result trong message đã finalized → coi như đã hoàn thành,
    * vì SDK trả tool_result trong message riêng, không gắn vào tool_use block.
    */
   isFinalized?: boolean;
+  /** Sub-agent đang chạy (null nếu không có) — dùng cho AgentToolCard hiển live activities */
+  activeSubAgent?: {
+    name: string;
+    activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
+    currentToolName?: string;
+  } | null;
 }
 
 /** Icon tương ứng cho từng tool */
@@ -139,9 +145,18 @@ const TodoChecklist: React.FC<{ input: Record<string, unknown> }> = ({ input }) 
  * Card chuyên biệt cho tool Agent/Task — hiện thông tin agent trực quan
  * thay vì dump JSON thô. Hiển thị tên agent, prompt/description, trạng thái.
  */
-const AgentToolCard: React.FC<{ input: Record<string, unknown>; result?: string; isError?: boolean }> = ({ input, result, isError }) => {
-  const agentName = String(input.subagent_type || input.agent_type || input.type || 'Sub Agent');
+const AgentToolCard: React.FC<{
+  input: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+  activeSubAgent?: ToolCallCardProps['activeSubAgent'];
+}> = ({ input, result, isError, activeSubAgent }) => {
+  // Ưu tiên tên từ activeSubAgent (chính xác từ SDK) → fallback parse từ input
+  const agentName = activeSubAgent?.name
+    || String(input.subagent_type || input.agent_type || input.type || 'Sub Agent');
   const prompt = String(input.description || input.prompt || input.task || '');
+  const activities = activeSubAgent?.activities || [];
+  const isRunning = !result;
 
   return (
     <div className="agent-tool-card">
@@ -153,6 +168,24 @@ const AgentToolCard: React.FC<{ input: Record<string, unknown>; result?: string;
       {/* Prompt/description của nhiệm vụ */}
       {prompt && (
         <div className="agent-tool-prompt">{prompt.length > 300 ? prompt.slice(0, 300) + '...' : prompt}</div>
+      )}
+      {/* Live activities — danh sách tool calls nội bộ đang/đã chạy */}
+      {isRunning && activities.length > 0 && (
+        <div className="agent-tool-activities">
+          {activities.map((act, i) => (
+            <div key={i} className={`agent-tool-activity-item ${i === activities.length - 1 ? 'active' : ''}`}>
+              {i === activities.length - 1 ? (
+                <LoadingOutlined style={{ fontSize: 10, color: 'rgba(225, 112, 85, 0.85)' }} spin />
+              ) : (
+                <CheckCircleOutlined style={{ fontSize: 10, color: 'rgba(81, 207, 102, 0.7)' }} />
+              )}
+              <span className="agent-tool-activity-name">{act.toolName}</span>
+              {act.inputSummary && (
+                <span className="agent-tool-activity-detail">{act.inputSummary}</span>
+              )}
+            </div>
+          ))}
+        </div>
       )}
       {/* Kết quả nếu có */}
       {result !== undefined && (
@@ -167,8 +200,10 @@ const AgentToolCard: React.FC<{ input: Record<string, unknown>; result?: string;
   );
 };
 
-const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = false }) => {
+const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = false, activeSubAgent }) => {
   const hasResult = toolCall.result !== undefined;
+  // Live preview: tool đang stream nếu có streamingInput
+  const isStreaming = !!(toolCall as any).streamingInput;
   // Tool đã hoàn thành nếu có explicit result, HOẶC nếu message đã finalized
   // (SDK trả tool_result trong message riêng — không gắn vào block này)
   const isDone = hasResult || isFinalized;
@@ -177,8 +212,8 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
   const isTodoWrite = toolCall.name === 'TodoWrite';
   const isAgentTool = toolCall.name === 'Agent' || toolCall.name === 'Task';
 
-  // TodoWrite và Agent: mặc định mở — user muốn thấy nội dung ngay
-  const [expanded, setExpanded] = useState(isTodoWrite || isAgentTool);
+  // TodoWrite, Agent, hoặc đang streaming: mặc định mở — user muốn thấy nội dung ngay
+  const [expanded, setExpanded] = useState(isTodoWrite || isAgentTool || isStreaming);
   const summary = getToolSummary(toolCall);
 
   return (
@@ -204,9 +239,17 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
         <div className="tl-tool-details">
           <div className="tl-tool-section">
             {isAgentTool ? (
-              <AgentToolCard input={toolCall.input} result={toolCall.result} isError={toolCall.isError} />
+              <AgentToolCard input={toolCall.input} result={toolCall.result} isError={toolCall.isError} activeSubAgent={activeSubAgent} />
             ) : isTodoWrite ? (
               <TodoChecklist input={toolCall.input} />
+            ) : isStreaming ? (
+              <>
+                <span className="tl-tool-label">INPUT <span className="tl-streaming-badge">LIVE</span></span>
+                <pre className="tl-tool-json tl-tool-streaming">
+                  {(toolCall as any).streamingInput}
+                  <span className="cursor-blink">█</span>
+                </pre>
+              </>
             ) : (
               <>
                 <span className="tl-tool-label">INPUT</span>

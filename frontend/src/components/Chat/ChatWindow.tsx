@@ -180,7 +180,13 @@ interface ChatWindowProps {
   /** Timestamp (ms) khi bắt đầu processing — dùng cho elapsed timer */
   processingStartedAt?: number | null;
   /** Sub-agent đang chạy — hiện indicator trước thinking row */
-  activeSubAgent?: { name: string; prompt: string } | null;
+  activeSubAgent?: {
+    name: string;
+    prompt: string;
+    lastHeartbeat?: number;
+    activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
+    currentToolName?: string;
+  } | null;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -351,7 +357,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     {isStreaming && isLast && <span className="cursor-blink">▊</span>}
                   </>
                 ) : (
-                  <ToolCallCard toolCall={(block as any).tool} isFinalized={!isStreaming} />
+                  <ToolCallCard
+                    toolCall={(block as any).tool}
+                    isFinalized={!isStreaming}
+                    activeSubAgent={activeSubAgent}
+                  />
                 )}
               </div>
             </div>
@@ -470,20 +480,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Streaming blocks — collapse/expand */}
             {hasStreamingData && renderBlockList(streamingBlocks, true)}
 
-            {/* Sub-agent indicator — hiện khi agent đang chạy (bên trong tl-assistant-row streaming) */}
-            {activeSubAgent && (
-              <div className="tl-block-row">
-                <div className="tl-dot dot-subagent">
-                  <RobotOutlined style={{ fontSize: 11 }} />
-                </div>
-                <div className="tl-subagent-indicator">
-                  <span className="tl-subagent-name">
-                    <LoadingOutlined style={{ fontSize: 10, marginRight: 5 }} />
-                    {activeSubAgent.name}
-                  </span>
-                </div>
-              </div>
-            )}
+
+            {/* Sub-agent info hiện trực tiếp bên trong Agent tool card (expanded) — không cần indicator riêng */}
 
             {/* Status indicator + timer + cancel */}
             {isThinking && (

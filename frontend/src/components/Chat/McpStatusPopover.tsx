@@ -15,6 +15,8 @@ import {
   CloudServerOutlined,
   CheckCircleFilled,
   InfoCircleFilled,
+  LoadingOutlined,
+  ReloadOutlined,
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
@@ -23,6 +25,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import { claudeApi } from '../../services/api';
+import type { McpRuntimeServer } from '../../hooks/useChat';
 
 /** Thông tin 1 MCP server được parse từ config */
 interface McpServerInfo {
@@ -55,11 +58,16 @@ function parseServers(raw: Record<string, any>): McpServerInfo[] {
  */
 interface McpStatusPopoverProps {
   projectId?: string;
+  /** Runtime status từ SDK init event — trạng thái kết nối thực tế */
+  runtimeStatus?: McpRuntimeServer[];
+  /** Callback làm mới MCP — gửi lại config cho session đang chạy */
+  onRefreshMcp?: () => void;
 }
 
-const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
+const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId, runtimeStatus = [], onRefreshMcp }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
 
   // Dữ liệu MCP tách biệt global / project
@@ -165,40 +173,88 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
       );
     }
 
-    return servers.map((srv) => (
-      <div key={srv.name} className="mcp-server-card">
-        {/* Tên server + type tag */}
-        <div className="mcp-server-header">
-          <CheckCircleFilled style={{ color: '#00b894', fontSize: 12 }} />
-          <span className="mcp-server-name">{srv.name}</span>
-          <Tag className="mcp-server-type-tag">{srv.type}</Tag>
-        </div>
+    return servers.map((srv) => {
+      // Tìm runtime status tương ứng cho server này
+      const runtime = runtimeStatus.find(r => r.name === srv.name);
+      const isConnected = runtime?.status === 'connected';
+      const isFailed = runtime?.status === 'failed';
+      const isPending = runtime?.status === 'pending';
+      const hasRuntime = !!runtime;
+      const toolCount = runtime?.tools?.length || 0;
 
-        {/* Command */}
-        <div className="mcp-server-cmd">
-          <Tooltip title={`${srv.command} ${srv.args.join(' ')}`}>
-            <span>
-              {srv.command} {srv.args.slice(0, 2).join(' ')}
-              {srv.args.length > 2 ? ' ...' : ''}
-            </span>
-          </Tooltip>
-        </div>
+      // Icon phản ánh trạng thái: connected=xanh, failed=đỏ, pending=vàng, chưa có=xám
+      const statusIcon = !hasRuntime
+        ? <InfoCircleFilled style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }} />
+        : isConnected
+          ? <CheckCircleFilled style={{ color: '#00b894', fontSize: 12 }} />
+          : isFailed
+            ? <InfoCircleFilled style={{ color: '#ff6b6b', fontSize: 12 }} />
+            : <LoadingOutlined style={{ color: '#fdcb6e', fontSize: 12 }} spin />;
 
-        {/* Env keys */}
-        {srv.envKeys.length > 0 && (
-          <div className="mcp-server-env">
-            {srv.envKeys.slice(0, 3).map((key) => (
-              <Tag key={key} className="mcp-env-tag">
-                {key}
+      // Tag text
+      const statusTag = hasRuntime
+        ? isConnected ? { color: 'green' as const, text: 'Connected' }
+          : isFailed ? { color: 'red' as const, text: 'Failed' }
+          : { color: 'gold' as const, text: 'Connecting...' }
+        : null;
+
+      return (
+        <div key={srv.name} className="mcp-server-card">
+          {/* Tên server + type tag + status */}
+          <div className="mcp-server-header">
+            {statusIcon}
+            <span className="mcp-server-name">{srv.name}</span>
+            <Tag className="mcp-server-type-tag">{srv.type}</Tag>
+            {statusTag && (
+              <Tag
+                color={statusTag.color}
+                style={{ fontSize: 9, lineHeight: '16px', marginLeft: 'auto' }}
+              >
+                {statusTag.text}
               </Tag>
-            ))}
-            {srv.envKeys.length > 3 && (
-              <Tag className="mcp-env-tag">+{srv.envKeys.length - 3}</Tag>
             )}
           </div>
-        )}
-      </div>
-    ));
+
+          {/* Command */}
+          <div className="mcp-server-cmd">
+            <Tooltip title={`${srv.command} ${srv.args.join(' ')}`}>
+              <span>
+                {srv.command} {srv.args.slice(0, 2).join(' ')}
+                {srv.args.length > 2 ? ' ...' : ''}
+              </span>
+            </Tooltip>
+          </div>
+
+          {/* Runtime info: số tools khả dụng */}
+          {hasRuntime && isConnected && toolCount > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              {toolCount} tools khả dụng
+            </div>
+          )}
+
+          {/* Lỗi kết nối */}
+          {isFailed && runtime?.error && (
+            <div style={{ fontSize: 10, color: '#ff6b6b', marginTop: 2 }}>
+              {runtime.error}
+            </div>
+          )}
+
+          {/* Env keys */}
+          {srv.envKeys.length > 0 && (
+            <div className="mcp-server-env">
+              {srv.envKeys.slice(0, 3).map((key) => (
+                <Tag key={key} className="mcp-env-tag">
+                  {key}
+                </Tag>
+              ))}
+              {srv.envKeys.length > 3 && (
+                <Tag className="mcp-env-tag">+{srv.envKeys.length - 3}</Tag>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   /** Render phần edit JSON */
@@ -347,7 +403,9 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
           count={totalCount}
           size="small"
           style={{
-            backgroundColor: totalCount > 0 ? '#00b894' : 'rgba(255,255,255,0.15)',
+            backgroundColor: runtimeStatus.some(s => s.status === 'failed')
+              ? '#ff6b6b'
+              : totalCount > 0 ? '#00b894' : 'rgba(255,255,255,0.15)',
             fontSize: 9,
             minWidth: 14,
             height: 14,
@@ -386,6 +444,24 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
             </Tag>
           </div>
         }
+        extra={
+          <Tooltip title="Làm mới MCP (gửi lại config cho session)">
+            <Button
+              type="text"
+              size="small"
+              icon={refreshing ? <LoadingOutlined spin /> : <ReloadOutlined />}
+              disabled={refreshing}
+              onClick={() => {
+                if (!onRefreshMcp) return;
+                setRefreshing(true);
+                onRefreshMcp();
+                // Reset sau 3s — chờ SDK init xong
+                setTimeout(() => setRefreshing(false), 3000);
+              }}
+              style={{ color: 'rgba(255,255,255,0.5)' }}
+            />
+          </Tooltip>
+        }
         placement="right"
         open={open}
         onClose={() => {
@@ -423,8 +499,7 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId }) => {
             <div className="mcp-footer-note">
               <InfoCircleFilled style={{ fontSize: 11, marginTop: 2, flexShrink: 0 }} />
               <span>
-                <b>Mẹo:</b> Nên cài đặt global các gói (npm -g) và gọi lệnh trực tiếp thay vì <b>npx</b> để khởi động MCP tức thì.
-                Cần gửi tin nhắn mới để áp dụng thay đổi.
+                <b>Mẹo:</b> MCP chỉ được truyền khi tạo session mới. Dùng nút <b>Làm mới</b> để cập nhật config cho session đang chạy.
               </span>
             </div>
           </>

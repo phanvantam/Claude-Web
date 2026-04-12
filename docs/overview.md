@@ -4,9 +4,14 @@ Tài liệu này cung cấp cái nhìn tổng quát về kiến trúc, mục ti�
 
 ---
 
-## 🎯 Mục tiêu Dự án
+## 🎯 Mục tiêu và Triết lý Dự án (Philosophy)
 
-Claude Web là một giao diện người dùng (Web UI) hiện đại được thiết kế để thay thế trải nghiệm Terminal truyền thống của [Claude CLI](https://claude.ai/download). Dự án hướng tới việc mang lại khả năng tương tác đồ họa mạnh mẽ cho các tác vụ lập trình mà AI thực hiện trực tiếp trên hệ thống của người dùng.
+Claude Web được xây dựng không phải để thay thế hay làm lại bộ não của Claude, mà là một **Giao diện Web nâng cao** cho [Claude CLI](https://claude.ai/download).
+
+**Triết lý cốt lõi:**
+*   **Web-First UI**: Chỉ tập trung vào việc hiển thị trực quan và tương tác người dùng.
+*   **SDK-Max**: Tận dụng tối đa sự thông minh, khả năng lập kế hoạch (planning) và tối ưu hóa của `@anthropic-ai/claude-agent-sdk`.
+*   **Zero Redundancy**: Tuyệt đối không làm lại, không xử lý lại bất kỳ logic nào mà Claude Code hoặc SDK đã hỗ trợ mặc định (ví dụ: vòng lặp tool, quản lý context, retry).
 
 ## 🏗 Kiến trúc Cơ bản
 
@@ -17,7 +22,7 @@ Hệ thống được xây dựng theo mô hình Client-Server với các thành
     *   Giao diện chat dạng **Timeline**, phân biệt rõ ràng các bước suy luận (`thinking`), thực thi công cụ (`tool_use`), và kết quả sub-agent.
     *   Tích hợp trình soạn thảo code (Monaco Editor) để xem xét văn bản/code.
 2.  **Backend (Node.js/Express)**: 
-    *   Tích hợp trực tiếp với **@anthropic-ai/claude-agent-sdk** (đây là thành phần quan trọng nhất để điều khiển Claude theo cách lập trình).
+    *   Tích hợp trực tiếp với **@anthropic-ai/claude-agent-sdk** (đây là thành phần quan trọng nhất để điều khiển Claude theo cách lập trình). Xem chi tiết tại [Tiêu chuẩn SDK](file:///Users/tampv/Projects/Claude-Web/docs/sdk-standards.md).
     *   Sử dụng **WebSocket (Socket.io)** để stream message và yêu cầu quyền hệ thống theo thời gian thực.
     *   Lưu trữ lịch sử phiên làm việc trong database **SQLite**.
 3.  **Claude CLI Connectivity**: 

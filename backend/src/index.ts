@@ -8,6 +8,9 @@ import configRoutes from './routes/config';
 import sessionRoutes from './routes/sessions';
 import claudeMetaRoutes from './routes/claude-meta';
 import { claudeService } from './services/claude';
+import { getMcpServersDetailed } from './services/claude-meta';
+import { getSession } from './services/session';
+import { getProject } from './services/project';
 import { logger } from './services/logger';
 
 const PORT = process.env.PORT || 3001;
@@ -329,6 +332,32 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Làm mới MCP status — đọc lại config và gửi trạng thái về frontend
+  socket.on('mcp:refresh', (data: { sessionId: string }) => {
+    logger.info(`[Socket] MCP refresh requested for session ${data.sessionId}`);
+    try {
+      // Resolve cwd từ session DB → project path
+      const session = getSession(data.sessionId);
+      const project = session?.projectId ? getProject(session.projectId) : null;
+      const cwd = project?.path || process.cwd();
+
+      const mcpData = getMcpServersDetailed(cwd);
+      const mergedMcp = { ...mcpData.global, ...mcpData.project };
+      const servers = Object.keys(mergedMcp).map(name => ({
+        name,
+        // Trả connected giả — vì chỉ đang đọc config, không phải runtime
+        status: 'connected' as const,
+        serverInfo: null,
+        tools: [] as string[],
+        error: null,
+      }));
+      socket.emit('mcp:status', { sessionId: data.sessionId, servers });
+      logger.info(`[Socket] MCP refresh done: ${servers.length} servers`);
+    } catch (err) {
+      logger.warn(`[Socket] MCP refresh failed:`, err);
+    }
+  });
+
   socket.on('disconnect', () => {
     logger.info(`[Socket] Client disconnected: ${socket.id}`);
   });
@@ -351,6 +380,19 @@ claudeService.on('stream:tool', (data) => {
 
 claudeService.on('stream:partial', (data) => {
   io.to(data.sessionId).emit('chat:stream:partial', data);
+});
+
+// Forward stream block events — live preview tool input, thinking delta
+claudeService.on('stream:block_start', (data) => {
+  io.to(data.sessionId).emit('chat:stream:block_start', data);
+});
+
+claudeService.on('stream:block_delta', (data) => {
+  io.to(data.sessionId).emit('chat:stream:block_delta', data);
+});
+
+claudeService.on('stream:block_stop', (data) => {
+  io.to(data.sessionId).emit('chat:stream:block_stop', data);
 });
 
 claudeService.on('status', (data) => {
@@ -396,9 +438,34 @@ claudeService.on('subagent:ended', (data) => {
   io.to(data.sessionId).emit('subagent:ended', data);
 });
 
+// Forward sub-agent live activity — tool calls/text nội bộ sub-agent đang chạy
+claudeService.on('subagent:activity', (data) => {
+  io.to(data.sessionId).emit('subagent:activity', data);
+});
+
 // Forward AskUserQuestion event — frontend hiện box hỏi đáp tương tác
 claudeService.on('askUser:question', (data) => {
   io.to(data.sessionId).emit('askUser:question', data);
+});
+
+// Forward task:progress heartbeat — frontend hiển thị indicator khi sub-agent đang chạy
+claudeService.on('task:progress', (data) => {
+  io.to(data.sessionId).emit('task:progress', data);
+});
+
+// Forward MCP runtime status — health check từ SDK init event
+claudeService.on('mcp:status', (data) => {
+  io.to(data.sessionId).emit('mcp:status', data);
+});
+
+// Forward MCP resolved — tất cả pending → connected khi SDK bắt đầu xử lý
+claudeService.on('mcp:resolved', (data) => {
+  io.to(data.sessionId).emit('mcp:resolved', data);
+});
+
+// Forward prompt suggestion — frontend hiển thị chip gợi ý câu hỏi tiếp theo
+claudeService.on('prompt:suggestion', (data) => {
+  io.to(data.sessionId).emit('prompt:suggestion', data);
 });
 
 // =========================
@@ -424,8 +491,8 @@ app.use((req, res, next) => {
 // Start Server
 // =========================
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info(`\n🚀 Claude Web Backend running on http://localhost:${PORT}`);
-  logger.info(`📡 WebSocket server ready\n`);
+  logger.info(`\nClaude Web Backend running on http://localhost:${PORT}`);
+  logger.info(`WebSocket server ready\n`);
 });
 
 // Graceful shutdown & Error handling

@@ -29,6 +29,9 @@ export interface SDKQueryConfig {
   effortLevel?: string;
   permissionMode?: string;
   systemPrompt?: string;
+  /** Giới hạn số turn — SDK tự dừng và trả error_max_turns */
+  maxTurns?: number;
+  /** Giới hạn chi phí USD — SDK tự dừng và trả error_max_budget_usd */
   maxBudgetUsd?: number;
   customArgs?: string[];
 }

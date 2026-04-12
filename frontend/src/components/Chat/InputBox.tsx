@@ -11,6 +11,9 @@ import {
   QuestionCircleOutlined,
   LockOutlined,
   TeamOutlined,
+  EditOutlined,
+  WarningOutlined,
+  CarryOutOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { claudeApi } from '../../services/api';
@@ -60,7 +63,7 @@ function getToolDescription(toolName: string): string | null {
  * Mô tả chi tiết cho từng model.
  * Dùng trong popover dấu hỏi trên dropdown model.
  */
-const MODEL_HELP: Record<string, { title: string; desc: string }> = {
+const MODEL_HELP: Record<string, { title: string; desc: React.ReactNode }> = {
   sonnet: {
     title: 'Claude Sonnet',
     desc: 'Model cân bằng giữa tốc độ và chất lượng. Phù hợp cho hầu hết tác vụ coding thông thường.',
@@ -79,7 +82,7 @@ const MODEL_HELP: Record<string, { title: string; desc: string }> = {
  * Mô tả chi tiết cho từng effort level.
  * Dùng trong popover dấu hỏi trên dropdown effort.
  */
-const EFFORT_HELP: Record<string, { title: string; desc: string }> = {
+const EFFORT_HELP: Record<string, { title: string; desc: React.ReactNode }> = {
   low: {
     title: 'Mức thấp',
     desc: 'Trả lời nhanh, ít suy nghĩ. Tiết kiệm token nhưng có thể bỏ sót chi tiết. Phù hợp cho câu hỏi đơn giản.',
@@ -98,7 +101,7 @@ const EFFORT_HELP: Record<string, { title: string; desc: string }> = {
  * Mô tả chi tiết cho từng permission mode.
  * Dùng trong popover dấu hỏi trên dropdown permission.
  */
-const PERMISSION_HELP: Record<string, { title: string; desc: string }> = {
+const PERMISSION_HELP: Record<string, { title: string; desc: React.ReactNode }> = {
   default: {
     title: 'Chế độ mặc định',
     desc: 'Claude sẽ hỏi xác nhận trước khi thực hiện bất kỳ thao tác nào ảnh hưởng đến file hoặc hệ thống.',
@@ -107,9 +110,13 @@ const PERMISSION_HELP: Record<string, { title: string; desc: string }> = {
     title: 'Chấp nhận chỉnh sửa',
     desc: 'Tự động chấp nhận đọc/ghi file. Vẫn hỏi trước khi chạy lệnh shell hoặc thao tác nguy hiểm.',
   },
+  auto: {
+    title: 'AI tự quyết định',
+    desc: 'Sử dụng AI classifier để đánh giá mức độ rủi ro. Tự động cho phép thao tác an toàn (đọc file, tìm kiếm), chỉ hỏi khi lệnh có nguy cơ cao.',
+  },
   bypassPermissions: {
     title: 'Bỏ qua tất cả quyền',
-    desc: '⚠️ Không hỏi bất kỳ quyền nào. Claude tự do thực thi mọi tool. Chỉ dùng khi bạn hoàn toàn tin tưởng.',
+    desc: <><WarningOutlined style={{ color: '#faad14' }} /> Không hỏi bất kỳ quyền nào. Claude tự do thực thi mọi tool. Chỉ dùng khi bạn hoàn toàn tin tưởng.</>,
   },
   plan: {
     title: 'Chỉ lập kế hoạch',
@@ -117,7 +124,7 @@ const PERMISSION_HELP: Record<string, { title: string; desc: string }> = {
   },
   dontAsk: {
     title: 'Không hỏi',
-    desc: 'Tương tự bỏ qua quyền — Claude sẽ tự động thực hiện mọi thứ mà không cần xác nhận.',
+    desc: 'Không hỏi quyền — từ chối nếu tool chưa được phê duyệt trước.',
   },
 };
 
@@ -125,7 +132,7 @@ const PERMISSION_HELP: Record<string, { title: string; desc: string }> = {
  * Render icon dấu hỏi kèm Popover mô tả cho một option.
  * Dùng chung cho cả 3 dropdown (model, effort, permission).
  */
-function HelpIcon({ title, desc }: { title: string; desc: string }) {
+function HelpIcon({ title, desc }: { title: string; desc: React.ReactNode }) {
   return (
     <Popover
       content={
@@ -504,14 +511,14 @@ const InputBox: React.FC<InputBoxProps> = ({
   /** Menu chọn agent — dùng cho nút toolbar Agent */
   const agentMenuItemsForToolbar: MenuProps['items'] = agents.length > 0
     ? agents.map(a => ({
-        key: a.name,
-        label: (
-          <div className="model-menu-item">
-            <span className="model-menu-name">@{a.name}</span>
-            {a.description && <span className="model-menu-desc">{a.description}</span>}
-          </div>
-        ),
-      }))
+      key: a.name,
+      label: (
+        <div className="model-menu-item">
+          <span className="model-menu-name">@{a.name}</span>
+          {a.description && <span className="model-menu-desc">{a.description}</span>}
+        </div>
+      ),
+    }))
     : [{ key: '__empty__', label: <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>Không có agent nào</span>, disabled: true }];
 
   /** Menu chọn model — kèm icon dấu hỏi mô tả từng model */
@@ -751,7 +758,7 @@ const InputBox: React.FC<InputBoxProps> = ({
                 key: 'default',
                 label: (
                   <div className="model-menu-item">
-                    <span className="model-menu-name">Mặc định</span>
+                    <span className="model-menu-name"><LockOutlined style={{ marginRight: 4 }} />Mặc định</span>
                     <span className="model-menu-desc">Hỏi trước khi thực hiện</span>
                     <HelpIcon title={PERMISSION_HELP.default.title} desc={PERMISSION_HELP.default.desc} />
                   </div>
@@ -761,19 +768,19 @@ const InputBox: React.FC<InputBoxProps> = ({
                 key: 'acceptEdits',
                 label: (
                   <div className="model-menu-item">
-                    <span className="model-menu-name">Chấp nhận sửa</span>
+                    <span className="model-menu-name"><EditOutlined style={{ marginRight: 4 }} />Chấp nhận sửa</span>
                     <span className="model-menu-desc">Tự động chấp nhận chỉnh sửa file</span>
                     <HelpIcon title={PERMISSION_HELP.acceptEdits.title} desc={PERMISSION_HELP.acceptEdits.desc} />
                   </div>
                 ),
               },
               {
-                key: 'bypassPermissions',
+                key: 'auto',
                 label: (
                   <div className="model-menu-item">
-                    <span className="model-menu-name">Bỏ qua quyền</span>
-                    <span className="model-menu-desc">Không hỏi bất kỳ quyền nào</span>
-                    <HelpIcon title={PERMISSION_HELP.bypassPermissions.title} desc={PERMISSION_HELP.bypassPermissions.desc} />
+                    <span className="model-menu-name"><RobotOutlined style={{ marginRight: 4 }} />AI tự quyết</span>
+                    <span className="model-menu-desc">AI phân loại rủi ro tự động</span>
+                    <HelpIcon title={PERMISSION_HELP.auto.title} desc={PERMISSION_HELP.auto.desc} />
                   </div>
                 ),
               },
@@ -781,19 +788,20 @@ const InputBox: React.FC<InputBoxProps> = ({
                 key: 'plan',
                 label: (
                   <div className="model-menu-item">
-                    <span className="model-menu-name">Lập kế hoạch</span>
+                    <span className="model-menu-name"><CarryOutOutlined style={{ marginRight: 4 }} />Lập kế hoạch</span>
                     <span className="model-menu-desc">Chỉ lập kế hoạch, không thực thi</span>
                     <HelpIcon title={PERMISSION_HELP.plan.title} desc={PERMISSION_HELP.plan.desc} />
                   </div>
                 ),
               },
+              { type: 'divider' },
               {
-                key: 'dontAsk',
+                key: 'bypassPermissions',
                 label: (
                   <div className="model-menu-item">
-                    <span className="model-menu-name">Không hỏi</span>
-                    <span className="model-menu-desc">Không hỏi bất kỳ điều gì</span>
-                    <HelpIcon title={PERMISSION_HELP.dontAsk.title} desc={PERMISSION_HELP.dontAsk.desc} />
+                    <span className="model-menu-name"><WarningOutlined style={{ marginRight: 4, color: '#faad14' }} />Bỏ qua quyền</span>
+                    <span className="model-menu-desc">Không hỏi bất kỳ quyền nào</span>
+                    <HelpIcon title={PERMISSION_HELP.bypassPermissions.title} desc={PERMISSION_HELP.bypassPermissions.desc} />
                   </div>
                 ),
               },
@@ -807,8 +815,14 @@ const InputBox: React.FC<InputBoxProps> = ({
           styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Chế độ quyền">
-            <SafetyCertificateOutlined />
-            <span>{permissionMode === 'acceptEdits' ? 'Chấp nhận sửa' : permissionMode === 'bypassPermissions' ? 'Bỏ qua quyền' : permissionMode === 'plan' ? 'Kế hoạch' : permissionMode === 'dontAsk' ? 'Không hỏi' : 'Mặc định'}</span>
+            <span>
+              {permissionMode === 'acceptEdits' ? <><EditOutlined style={{ marginRight: 4 }} />Chấp nhận sửa</>
+                : permissionMode === 'auto' ? <><RobotOutlined style={{ marginRight: 4 }} />AI tự quyết</>
+                  : permissionMode === 'bypassPermissions' ? <><WarningOutlined style={{ marginRight: 4, color: '#faad14' }} />Bỏ qua quyền</>
+                    : permissionMode === 'plan' ? <><CarryOutOutlined style={{ marginRight: 4 }} />Kế hoạch</>
+                      : permissionMode === 'dontAsk' ? 'Không hỏi'
+                        : <><LockOutlined style={{ marginRight: 4 }} />Mặc định</>}
+            </span>
           </button>
         </Dropdown>
 

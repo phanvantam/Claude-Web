@@ -498,6 +498,48 @@ export function getAgent(filename: string, projectPath?: string): string {
 }
 
 /**
+ * Chuyển đổi danh sách agent files sang format SDK `options.agents`.
+ * SDK sẽ tự điều phối tool `Agent`/`Task` với các definitions này,
+ * thay vì Backend phải parse tool_use thủ công.
+ *
+ * Trả về Record<agentName, SDKAgentDef> hoặc object rỗng nếu không có agent nào.
+ */
+export function buildSDKAgentDefinitions(projectPath?: string): Record<string, {
+  description: string;
+  prompt: string;
+  tools?: string[];
+  model?: string;
+  maxTurns?: number;
+  permissionMode?: string;
+}> {
+  const agents = listAllAgents(projectPath);
+  const result: Record<string, any> = {};
+
+  for (const agent of agents) {
+    try {
+      const content = getAgent(agent.filename, projectPath);
+      // Bỏ phần frontmatter (---...---), chỉ lấy body markdown làm prompt
+      const promptBody = content.replace(/^---[\s\S]*?---\s*/, '').trim();
+      if (!promptBody) continue; // Bỏ qua agent không có nội dung prompt
+
+      result[agent.name] = {
+        description: agent.frontmatter.description || `Agent ${agent.name}`,
+        prompt: promptBody,
+        // Chỉ truyền các field có giá trị — tránh override mặc định của SDK
+        ...(agent.frontmatter.tools && { tools: agent.frontmatter.tools }),
+        ...(agent.frontmatter.model && agent.frontmatter.model !== 'inherit' && { model: agent.frontmatter.model }),
+        ...(agent.frontmatter.maxTurns && { maxTurns: agent.frontmatter.maxTurns }),
+        ...(agent.frontmatter.permissionMode && { permissionMode: agent.frontmatter.permissionMode }),
+      };
+    } catch {
+      // Bỏ qua agent không đọc được — không block toàn bộ query
+    }
+  }
+
+  return result;
+}
+
+/**
  * Ghi nội dung vào agent file.
  * scope = 'user' → ~/.claude/agents/, 'project' → <projectPath>/.claude/agents/
  */

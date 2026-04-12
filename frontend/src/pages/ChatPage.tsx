@@ -66,6 +66,8 @@ const ChatPage: React.FC = () => {
     activeSubAgent,
     pendingAskUser,
     respondAskUser,
+    mcpRuntimeStatus,
+    refreshMcp,
   } = useChat();
 
   const lastStartedRef = React.useRef<string | null>(null);
@@ -94,7 +96,7 @@ const ChatPage: React.FC = () => {
   // 1. Đồng bộ model của session vào config UI khi sessionModel thay đổi
   useEffect(() => {
     if (sessionModel) {
-      console.log(`[ChatPage] ✅ Syncing model from session: ${sessionModel}`);
+      console.log(`[ChatPage] Syncing model from session: ${sessionModel}`);
       setConfig(prev => ({ ...prev, model: sessionModel }));
     }
   }, [sessionModel]);
@@ -128,7 +130,7 @@ const ChatPage: React.FC = () => {
     configApi.get().then(cfg => {
       setConfig(prev => {
         const finalModel = sessionModel || prev.model || cfg.model;
-        console.log(`[ChatPage] ⚙️ Global config loaded. Current: "${prev.model}", Server: "${cfg.model}", Next: "${finalModel}"`);
+        console.log(`[ChatPage] Global config loaded. Current: "${prev.model}", Server: "${cfg.model}", Next: "${finalModel}"`);
         return { ...cfg, model: finalModel };
       });
     }).catch(() => {});
@@ -136,7 +138,7 @@ const ChatPage: React.FC = () => {
     claudeApi.getModels().then(data => {
       setConfig(prev => {
         const finalModel = sessionModel || prev.model || data.current;
-        console.log(`[ChatPage] 🤖 CLI models loaded. Current: "${prev.model}", CLI: "${data.current}", Next: "${finalModel}"`);
+        console.log(`[ChatPage] CLI models loaded. Current: "${prev.model}", CLI: "${data.current}", Next: "${finalModel}"`);
         return { ...prev, model: finalModel };
       });
     }).catch(() => {});
@@ -476,7 +478,7 @@ const ChatPage: React.FC = () => {
               />
             </Tooltip>
           </Badge>
-          <McpStatusPopover projectId={project?.id} />
+          <McpStatusPopover projectId={project?.id} runtimeStatus={mcpRuntimeStatus} onRefreshMcp={refreshMcp} />
           {/* Nút Sub Agents — badge hiện số lượng agent đã chạy */}
           <Badge count={subAgents.length} size="small" offset={[-4, 4]} style={{ backgroundColor: 'var(--accent)' }}>
             <Button

@@ -28,6 +28,15 @@ export interface PendingAskUser {
   metadata?: Record<string, unknown>;
 }
 
+/** Runtime status của 1 MCP server — lấy từ SDK init event */
+export interface McpRuntimeServer {
+  name: string;
+  status: 'connected' | 'failed' | 'pending' | 'unknown';
+  serverInfo?: { name?: string; version?: string } | null;
+  tools: string[];
+  error?: string | null;
+}
+
 interface UseChatReturn {
   messages: ChatMessage[];
   streamingContent: string;
@@ -75,8 +84,18 @@ interface UseChatReturn {
   respondAskUser: (answer: string) => void;
   /** Đang chuyển phiên (loading overlay) */
   isSwitchingSession: boolean;
-  /** Sub-agent đang chạy (null nếu không có) */
-  activeSubAgent: { name: string; prompt: string } | null;
+  /** Sub-agent đang chạy (null nếu không có). activities: danh sách tool đang/đã chạy nội bộ */
+  activeSubAgent: {
+    name: string;
+    prompt: string;
+    lastHeartbeat?: number;
+    activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
+    currentToolName?: string;
+  } | null;
+  /** Runtime status của MCP servers — lấy từ SDK init event mỗi lần gửi message */
+  mcpRuntimeStatus: McpRuntimeServer[];
+  /** Làm mới MCP — gửi lại config cho session đang chạy */
+  refreshMcp: () => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -98,8 +117,16 @@ export function useChat(): UseChatReturn {
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const [isSwitchingSession, setIsSwitchingSession] = useState(false);
   /** Sub-agent đang chạy — hiển indicator trong timeline */
-  const [activeSubAgent, setActiveSubAgent] = useState<{ name: string; prompt: string } | null>(null);
+  const [activeSubAgent, setActiveSubAgent] = useState<{
+    name: string;
+    prompt: string;
+    lastHeartbeat?: number;
+    activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
+    currentToolName?: string;
+  } | null>(null);
   const [pendingAskUser, setPendingAskUser] = useState<PendingAskUser | null>(null);
+  /** Runtime MCP status — cập nhật mỗi lần SDK gửi init event */
+  const [mcpRuntimeStatus, setMcpRuntimeStatus] = useState<McpRuntimeServer[]>([]);
   const streamingRef = useRef('');
   // Giữ ref session ID để reconnect handler luôn có giá trị mới nhất
   const sessionIdRef = useRef<string | null>(null);
@@ -323,6 +350,115 @@ export function useChat(): UseChatReturn {
 
     socket.on('chat:stream:partial', () => {});
 
+    // Live preview: block bắt đầu stream — tạo placeholder trong streamingBlocks
+    socket.on('chat:stream:block_start', (data: {
+      sessionId: string;
+      blockIndex: number;
+      blockType: 'text' | 'thinking' | 'tool_use';
+      toolName?: string;
+      toolId?: string;
+    }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      if (data.blockType === 'tool_use' && data.toolName) {
+        // Tạo tool_use block với streamingInput rỗng — sẽ được fill dần bởi block_delta
+        setStreamingBlocks(prev => [
+          ...prev,
+          {
+            type: 'tool_use',
+            tool: {
+              id: data.toolId || `stream-${data.blockIndex}`,
+              name: data.toolName,
+              input: {},
+              streamingInput: '',
+            },
+          },
+        ]);
+      } else if (data.blockType === 'thinking') {
+        // Tạo thinking block rỗng — sẽ được fill dần
+        setStreamingBlocks(prev => [...prev, { type: 'thinking', thinking: '' }]);
+      }
+    });
+
+    // Live preview: delta — cập nhật nội dung block đang stream
+    socket.on('chat:stream:block_delta', (data: {
+      sessionId: string;
+      blockIndex: number;
+      deltaType: 'input_json_delta' | 'thinking_delta';
+      chunk: string;
+      accumulated?: string;
+      toolName?: string;
+    }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+
+      if (data.deltaType === 'input_json_delta') {
+        // Cập nhật streamingInput của tool_use block cuối cùng
+        setStreamingBlocks(prev => {
+          const lastIdx = prev.length - 1;
+          if (lastIdx < 0) return prev;
+          const last = prev[lastIdx];
+          if (last.type !== 'tool_use') return prev;
+          const updated = [...prev];
+          updated[lastIdx] = {
+            ...last,
+            tool: {
+              ...last.tool,
+              streamingInput: data.accumulated || '',
+            },
+          };
+          return updated;
+        });
+      } else if (data.deltaType === 'thinking_delta') {
+        // Nối thinking text vào thinking block cuối cùng
+        setStreamingBlocks(prev => {
+          const lastIdx = prev.length - 1;
+          if (lastIdx < 0) return prev;
+          const last = prev[lastIdx];
+          if (last.type !== 'thinking') return prev;
+          const updated = [...prev];
+          updated[lastIdx] = {
+            ...last,
+            thinking: last.thinking + data.chunk,
+          };
+          return updated;
+        });
+      }
+    });
+
+    // Live preview: block hoàn tất — đánh dấu block đã xong stream
+    socket.on('chat:stream:block_stop', (data: {
+      sessionId: string;
+      blockIndex: number;
+      blockType: string;
+    }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      // Khi block stop, assistant event sẽ đến với dữ liệu đầy đủ để thay thế.
+      // Ta chỉ cần clear streamingInput của tool_use block (nếu có)
+      if (data.blockType === 'tool_use') {
+        setStreamingBlocks(prev => {
+          const lastIdx = prev.length - 1;
+          if (lastIdx < 0) return prev;
+          const last = prev[lastIdx];
+          if (last.type !== 'tool_use') return prev;
+          const updated = [...prev];
+          // Parse JSON thoát an toàn
+          const tool = last.tool;
+          let parsedInput = tool.input;
+          if ((tool as any).streamingInput) {
+            try {
+              parsedInput = JSON.parse((tool as any).streamingInput);
+            } catch {
+              // JSON chưa hoàn chỉnh — giữ nguyên
+            }
+          }
+          updated[lastIdx] = {
+            ...last,
+            tool: { ...tool, input: parsedInput, streamingInput: undefined } as any,
+          };
+          return updated;
+        });
+      }
+    });
+
     // Status updates — chỉ xử lý cho session đang xem
     socket.on('chat:status', (data: { sessionId: string; status: 'idle' | 'thinking' | 'tool_use'; toolName?: string; startedAt?: number }) => {
       if (data.sessionId !== sessionIdRef.current) return;
@@ -391,6 +527,58 @@ export function useChat(): UseChatReturn {
       setActiveSubAgent(null);
     });
 
+    // Task progress heartbeat — SDK gửi mỗi ~30s khi sub-agent đang chạy.
+    // Cập nhật lastHeartbeat để UI hiển thị agent vẫn đang xử lý.
+    socket.on('task:progress', (data: { sessionId: string; taskId?: string; summary?: string }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      setActiveSubAgent(prev => {
+        if (!prev) return prev;
+        return { ...prev, lastHeartbeat: Date.now() };
+      });
+    });
+
+    // Sub-agent activity — tool call/text nội bộ sub-agent đang chạy
+    socket.on('subagent:activity', (data: {
+      sessionId: string;
+      parentToolUseId: string;
+      type: 'tool_start' | 'text_delta';
+      toolName?: string;
+      inputSummary?: string;
+      text?: string;
+    }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      if (data.type === 'tool_start' && data.toolName) {
+        setActiveSubAgent(prev => {
+          if (!prev) return prev;
+          const activities = prev.activities || [];
+          return {
+            ...prev,
+            currentToolName: data.toolName,
+            lastHeartbeat: Date.now(),
+            activities: [...activities, {
+              toolName: data.toolName!,
+              inputSummary: data.inputSummary || '',
+              timestamp: Date.now(),
+            }],
+          };
+        });
+      }
+    });
+
+    // MCP runtime status — SDK gửi khi bắt đầu query (system init event)
+    socket.on('mcp:status', (data: { sessionId: string; servers: McpRuntimeServer[] }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      setMcpRuntimeStatus(data.servers);
+    });
+
+    // MCP resolved — SDK đã vượt qua giai đoạn init, tất cả pending → connected
+    socket.on('mcp:resolved', (data: { sessionId: string }) => {
+      if (data.sessionId !== sessionIdRef.current) return;
+      setMcpRuntimeStatus(prev =>
+        prev.map(s => s.status === 'pending' ? { ...s, status: 'connected' as const } : s)
+      );
+    });
+
     // AskUserQuestion — Claude muốn hỏi user qua tool tương tác
     socket.on('askUser:question', (data: { sessionId: string; input: Record<string, unknown> }) => {
       if (data.sessionId !== sessionIdRef.current) return;
@@ -439,9 +627,14 @@ export function useChat(): UseChatReturn {
       socket.off('permission:request');
       socket.off('subagent:started');
       socket.off('subagent:ended');
+      socket.off('task:progress');
       socket.off('askUser:question');
       socket.off('session:ended');
       socket.off('session:compacted');
+      socket.off('chat:stream:block_start');
+      socket.off('chat:stream:block_delta');
+      socket.off('chat:stream:block_stop');
+      socket.off('subagent:activity');
       // Giảm refCount — socket chỉ thực sự disconnect khi hết consumer
       socketService.release();
     };
@@ -612,6 +805,15 @@ export function useChat(): UseChatReturn {
     socket?.emit('askUser:respond', { sessionId: sid, answer });
   }, []);
 
+  // Làm mới MCP — gửi socket event để backend reload config cho session hiện tại
+  const refreshMcp = useCallback(() => {
+    const socket = socketService.getSocket();
+    if (!socket || !sessionIdRef.current) return;
+    // Reset status về pending trước khi gửi
+    setMcpRuntimeStatus(prev => prev.map(s => ({ ...s, status: 'pending' as const })));
+    socket.emit('mcp:refresh', { sessionId: sessionIdRef.current });
+  }, []);
+
   return {
     messages,
     streamingContent,
@@ -643,5 +845,7 @@ export function useChat(): UseChatReturn {
     respondAskUser,
     isSwitchingSession,
     activeSubAgent,
+    mcpRuntimeStatus,
+    refreshMcp,
   };
 }
