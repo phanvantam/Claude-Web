@@ -7,6 +7,8 @@ export default defineConfig({
   // Inject build version vào HTML (%VITE_BUILD_VERSION%) và JS (import.meta.env.VITE_BUILD_VERSION)
   define: {
     '__BUILD_TIME__': JSON.stringify(new Date().toISOString()),
+    'process.env.VITE_BUILD_VERSION': JSON.stringify('1.1.0-rev'),
+    'import.meta.env.VITE_BUILD_VERSION': JSON.stringify('1.1.0-rev'),
   },
   // Cho phép Vite serve file từ thư mục node_modules/monaco-editor
   server: {

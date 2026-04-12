@@ -135,6 +135,38 @@ const TodoChecklist: React.FC<{ input: Record<string, unknown> }> = ({ input }) 
   );
 };
 
+/**
+ * Card chuyên biệt cho tool Agent/Task — hiện thông tin agent trực quan
+ * thay vì dump JSON thô. Hiển thị tên agent, prompt/description, trạng thái.
+ */
+const AgentToolCard: React.FC<{ input: Record<string, unknown>; result?: string; isError?: boolean }> = ({ input, result, isError }) => {
+  const agentName = String(input.subagent_type || input.agent_type || input.type || 'Sub Agent');
+  const prompt = String(input.description || input.prompt || input.task || '');
+
+  return (
+    <div className="agent-tool-card">
+      {/* Header: tên agent + icon */}
+      <div className="agent-tool-header">
+        <ThunderboltOutlined style={{ fontSize: 14, color: 'var(--accent)' }} />
+        <span className="agent-tool-name">{agentName}</span>
+      </div>
+      {/* Prompt/description của nhiệm vụ */}
+      {prompt && (
+        <div className="agent-tool-prompt">{prompt.length > 300 ? prompt.slice(0, 300) + '...' : prompt}</div>
+      )}
+      {/* Kết quả nếu có */}
+      {result !== undefined && (
+        <div className={`agent-tool-result ${isError ? 'error' : ''}`}>
+          <span className="tl-tool-label" style={{ marginBottom: 4 }}>
+            {isError ? 'LỖI' : 'KẾT QUẢ'}
+          </span>
+          <pre className="tl-tool-json" style={{ maxHeight: 200 }}>{result}</pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = false }) => {
   const hasResult = toolCall.result !== undefined;
   // Tool đã hoàn thành nếu có explicit result, HOẶC nếu message đã finalized
@@ -143,9 +175,10 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
   const isError = toolCall.isError;
   const isRunning = !isDone;
   const isTodoWrite = toolCall.name === 'TodoWrite';
+  const isAgentTool = toolCall.name === 'Agent' || toolCall.name === 'Task';
 
-  // TodoWrite: mặc định mở — hiệu quả hơn vì user muốn thấy checklist ngay
-  const [expanded, setExpanded] = useState(isTodoWrite);
+  // TodoWrite và Agent: mặc định mở — user muốn thấy nội dung ngay
+  const [expanded, setExpanded] = useState(isTodoWrite || isAgentTool);
   const summary = getToolSummary(toolCall);
 
   return (
@@ -170,7 +203,9 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
       {expanded && (
         <div className="tl-tool-details">
           <div className="tl-tool-section">
-            {isTodoWrite ? (
+            {isAgentTool ? (
+              <AgentToolCard input={toolCall.input} result={toolCall.result} isError={toolCall.isError} />
+            ) : isTodoWrite ? (
               <TodoChecklist input={toolCall.input} />
             ) : (
               <>

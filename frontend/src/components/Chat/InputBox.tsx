@@ -10,6 +10,7 @@ import {
   CloseCircleOutlined,
   QuestionCircleOutlined,
   LockOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { claudeApi } from '../../services/api';
@@ -293,7 +294,11 @@ const InputBox: React.FC<InputBoxProps> = ({
   const slashMenuRef = useRef<HTMLDivElement>(null);
 
   // State cho @agent mention popup
-  const [agents, setAgents] = useState<{ name: string; filename: string; description: string }[]>([]);
+  const [agents, setAgents] = useState<{
+    name: string; filename: string; description: string;
+    scope?: 'user' | 'project' | 'local';
+    model?: string; tools?: string[];
+  }[]>([]);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [agentFilter, setAgentFilter] = useState('');
   const [agentIndex, setAgentIndex] = useState(0);
@@ -321,8 +326,8 @@ const InputBox: React.FC<InputBoxProps> = ({
         ]);
       });
 
-    // Fetch danh sách agents cho @mention autocomplete
-    claudeApi.listAgentsWithDesc()
+    // Fetch danh sách agents cho @mention autocomplete — truyền projectId để scan đa scope
+    claudeApi.listAgentsWithDesc(projectId)
       .then(setAgents)
       .catch(() => setAgents([]));
   }, [projectId]);
@@ -362,6 +367,21 @@ const InputBox: React.FC<InputBoxProps> = ({
     setValue(prev => prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `));
     setShowAgentMenu(false);
     setAgentFilter('');
+    textareaRef.current?.focus();
+  }, []);
+
+  /**
+   * Chọn agent từ nút toolbar — chèn @name vào cuối input.
+   * Nếu đang gõ dở @... ở cuối thì thay thế, ngược lại nối thêm.
+   */
+  const handleSelectAgentBtn = useCallback((name: string) => {
+    setValue(prev => {
+      const match = prev.match(/@[a-zA-Z0-9_-]*$/);
+      if (match) return prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `);
+      // Nối thêm — thêm dấu cách nếu cần
+      const spacer = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : '';
+      return prev + spacer + `@${name} `;
+    });
     textareaRef.current?.focus();
   }, []);
 
@@ -480,6 +500,19 @@ const InputBox: React.FC<InputBoxProps> = ({
       active?.scrollIntoView({ block: 'nearest' });
     }
   }, [slashIndex, showSlashMenu, agentIndex, showAgentMenu]);
+
+  /** Menu chọn agent — dùng cho nút toolbar Agent */
+  const agentMenuItemsForToolbar: MenuProps['items'] = agents.length > 0
+    ? agents.map(a => ({
+        key: a.name,
+        label: (
+          <div className="model-menu-item">
+            <span className="model-menu-name">@{a.name}</span>
+            {a.description && <span className="model-menu-desc">{a.description}</span>}
+          </div>
+        ),
+      }))
+    : [{ key: '__empty__', label: <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>Không có agent nào</span>, disabled: true }];
 
   /** Menu chọn model — kèm icon dấu hỏi mô tả từng model */
   const modelMenuItems: MenuProps['items'] = models.map(m => {
@@ -602,22 +635,32 @@ const InputBox: React.FC<InputBoxProps> = ({
       {/* @Agent mention popup — tương tự slash-menu, trigger bằng '@' */}
       {showAgentMenu && filteredAgents.length > 0 && (
         <div className="slash-menu" ref={agentMenuRef}>
-          <div className="slash-menu-title">Sub Agents</div>
+          <div className="slash-menu-title">Agents</div>
           {filteredAgents.map((a, i) => (
             <div
-              key={a.name}
+              key={`${a.scope || 'user'}-${a.name}`}
               className={`slash-item ${i === agentIndex ? 'active' : ''}`}
               onClick={() => insertAgent(a.name)}
               onMouseEnter={() => setAgentIndex(i)}
             >
               <span className="slash-cmd">@{a.name}</span>
-              {/* Mô tả: truncate 1 dòng — đọc full qua dấu ? */}
+              {/* Scope badge — phân biệt nguồn gốc agent */}
+              {a.scope && a.scope !== 'user' && (
+                <span className="slash-source">{a.scope}</span>
+              )}
+              {/* Mô tả: truncate 1 dòng */}
               <span className="slash-desc slash-desc-truncate">
                 {a.description || a.name}
               </span>
               {a.description && (
                 <Tooltip
-                  title={a.description}
+                  title={
+                    <span>
+                      {a.description}
+                      {a.model && <span style={{ display: 'block', marginTop: 4, color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Model: {a.model}</span>}
+                      {a.tools && a.tools.length > 0 && <span style={{ display: 'block', marginTop: 2, color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Tools: {a.tools.join(', ')}</span>}
+                    </span>
+                  }
                   trigger={['hover', 'click']}
                   placement="left"
                   mouseEnterDelay={0.2}
@@ -766,6 +809,26 @@ const InputBox: React.FC<InputBoxProps> = ({
           <button className="toolbar-btn" title="Chế độ quyền">
             <SafetyCertificateOutlined />
             <span>{permissionMode === 'acceptEdits' ? 'Chấp nhận sửa' : permissionMode === 'bypassPermissions' ? 'Bỏ qua quyền' : permissionMode === 'plan' ? 'Kế hoạch' : permissionMode === 'dontAsk' ? 'Không hỏi' : 'Mặc định'}</span>
+          </button>
+        </Dropdown>
+
+        {/* Nút chọn Agent — dropdown danh sách agents, chèn @name vào textarea */}
+        <Dropdown
+          menu={{
+            items: agentMenuItemsForToolbar,
+            onClick: ({ key }) => { if (key !== '__empty__') handleSelectAgentBtn(key); },
+          }}
+          trigger={['click']}
+          placement="topLeft"
+          overlayClassName="toolbar-dropdown"
+          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
+        >
+          <button
+            className={`toolbar-btn${agents.length > 0 ? ' toolbar-btn-active' : ''}`}
+            title="Giao việc cho Sub-Agent"
+          >
+            <TeamOutlined />
+            <span>Agent{agents.length > 0 ? ` (${agents.length})` : ''}</span>
           </button>
         </Dropdown>
       </div>

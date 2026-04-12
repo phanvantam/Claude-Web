@@ -21,9 +21,10 @@ export class QueryProcessor {
     if (matchId && matchId === ctx.activeTaskToolId) {
       logger.info(`[Claude][${this.sessionId}] ✅ Sub-agent Task completed, activities: ${ctx.subAgentActivities.length}`);
 
-      // Logic parse kỹ thuật chuyên sâu (giữ nguyên)
-      const agentIdMatch = resultContent.match(/agentId:\s+([a-z0-9]+)/i);
-      const usageMatch = resultContent.match(/<usage>([\s\S]*?)<\/usage>/);
+      // Regex parse agentId — hỗ trợ UUID chuẩn và short ID, linh hoạt khoảng trắng/xuống dòng
+      const agentIdMatch = resultContent.match(/agentId:\s*([a-f0-9-]{8,36})/i);
+      // Usage block — cho phép khoảng trắng/xuống dòng linh hoạt giữa tag và nội dung
+      const usageMatch = resultContent.match(/<usage>\s*([\s\S]*?)\s*<\/usage>/);
       
       let subAgentUsage = undefined;
       let subAgentId = agentIdMatch ? agentIdMatch[1] : undefined;
@@ -31,14 +32,18 @@ export class QueryProcessor {
 
       if (usageMatch) {
         const usageStr = usageMatch[1];
+        // Parse từng field — regex cho phép dấu cách tab linh hoạt
+        const parseField = (field: string): number =>
+          parseInt(usageStr.match(new RegExp(`${field}:\\s*(\\d+)`))?.[1] || '0');
         subAgentUsage = {
-          tokens: parseInt(usageStr.match(/total_tokens:\s+(\d+)/)?.[1] || '0'),
-          tools: parseInt(usageStr.match(/tool_uses:\s+(\d+)/)?.[1] || '0'),
-          durationMs: parseInt(usageStr.match(/duration_ms:\s+(\d+)/)?.[1] || '0'),
+          tokens: parseField('total_tokens'),
+          tools: parseField('tool_uses'),
+          durationMs: parseField('duration_ms'),
         };
+        // Strip metadata khỏi kết quả hiển thị — giữ phần nội dung có ý nghĩa
         const stripped = resultContent
-          .replace(/agentId:[\s\S]*?\(for resuming to continue this agent's work if needed\)/i, '')
-          .replace(/<usage>[\s\S]*?<\/usage>/, '')
+          .replace(/agentId:\s*[a-f0-9-]{8,36}[^\n]*(?:\n[^\n]*for resuming[^\n]*)?\s*/gi, '')
+          .replace(/<usage>\s*[\s\S]*?\s*<\/usage>/g, '')
           .trim();
         displayResult = stripped || "Nhiệm vụ đã hoàn thành.";
       }

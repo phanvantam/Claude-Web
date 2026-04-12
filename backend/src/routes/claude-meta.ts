@@ -10,6 +10,7 @@ import {
   getMcpServersDetailed,
   updateProjectMcpServers,
   listAgents,
+  listAllAgents,
   listAgentsWithDescription,
   getAgent,
   saveAgent,
@@ -20,6 +21,7 @@ import {
   saveCustomCommand,
   deleteCustomCommand,
 } from '../services/claude-meta';
+import type { AgentScope } from '../services/claude-meta';
 import { getProject } from '../services/project';
 
 const router = Router();
@@ -186,10 +188,20 @@ router.post('/mcp/project-servers', (req, res) => {
 });
 
 // ============================
-// Agents — ~/.claude/agents/*.md
+// Agents — Multi-scope: user, project, local
 // ============================
 
-/** GET /api/claude/agents — Danh sách agent files */
+/**
+ * Helper: resolve projectPath từ projectId query param.
+ * Dùng chung cho các route agent cần biết đường dẫn dự án.
+ */
+function resolveProjectPath(projectId?: string): string | undefined {
+  if (!projectId) return undefined;
+  const project = getProject(projectId);
+  return project?.path;
+}
+
+/** GET /api/claude/agents — Danh sách agent files (tương thích ngược, chỉ user scope) */
 router.get('/agents', (_req, res) => {
   try {
     res.json(listAgents());
@@ -198,19 +210,38 @@ router.get('/agents', (_req, res) => {
   }
 });
 
-/** GET /api/claude/agents/with-desc — Agents kèm description (cho @mention autocomplete) */
-router.get('/agents/with-desc', (_req, res) => {
+/**
+ * GET /api/claude/agents/all — Tất cả agents từ 3 scope (user + project + local).
+ * Query: projectId (bắt buộc để scan project/local scope).
+ * Trả về AgentDefinition[] kèm scope, frontmatter đầy đủ.
+ */
+router.get('/agents/all', (req, res) => {
   try {
-    res.json(listAgentsWithDescription());
+    const projectPath = resolveProjectPath(req.query.projectId as string);
+    res.json(listAllAgents(projectPath));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-/** GET /api/claude/agents/:filename — Đọc nội dung agent */
+/**
+ * GET /api/claude/agents/with-desc — Agents kèm description (cho @mention autocomplete).
+ * Query: projectId (optional) — nếu có sẽ scan cả project/local scope.
+ */
+router.get('/agents/with-desc', (req, res) => {
+  try {
+    const projectPath = resolveProjectPath(req.query.projectId as string);
+    res.json(listAgentsWithDescription(projectPath));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/claude/agents/:filename — Đọc nội dung agent (tìm theo scope ưu tiên) */
 router.get('/agents/:filename', (req, res) => {
   try {
-    const content = getAgent(req.params.filename);
+    const projectPath = resolveProjectPath(req.query.projectId as string);
+    const content = getAgent(req.params.filename, projectPath);
     res.json({ content });
   } catch (error: any) {
     res.status(404).json({ error: error.message });
@@ -220,12 +251,13 @@ router.get('/agents/:filename', (req, res) => {
 /** PUT /api/claude/agents/:filename — Cập nhật nội dung agent */
 router.put('/agents/:filename', (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, scope, projectId } = req.body;
     if (typeof content !== 'string') {
       res.status(400).json({ error: 'Trường "content" phải là chuỗi' });
       return;
     }
-    saveAgent(req.params.filename, content);
+    const projectPath = resolveProjectPath(projectId);
+    saveAgent(req.params.filename, content, (scope as AgentScope) || 'user', projectPath);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -235,12 +267,13 @@ router.put('/agents/:filename', (req, res) => {
 /** POST /api/claude/agents — Tạo agent mới */
 router.post('/agents', (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, scope, projectId } = req.body;
     if (!name || typeof name !== 'string') {
       res.status(400).json({ error: 'Trường "name" là bắt buộc' });
       return;
     }
-    const filename = createAgent(name);
+    const projectPath = resolveProjectPath(projectId);
+    const filename = createAgent(name, (scope as AgentScope) || 'user', projectPath);
     res.json({ filename });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -250,7 +283,9 @@ router.post('/agents', (req, res) => {
 /** DELETE /api/claude/agents/:filename — Xóa agent */
 router.delete('/agents/:filename', (req, res) => {
   try {
-    deleteAgent(req.params.filename);
+    const scope = (req.query.scope as AgentScope) || 'user';
+    const projectPath = resolveProjectPath(req.query.projectId as string);
+    deleteAgent(req.params.filename, scope, projectPath);
     res.json({ success: true });
   } catch (error: any) {
     res.status(404).json({ error: error.message });

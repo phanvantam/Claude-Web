@@ -409,6 +409,14 @@ const ChatPage: React.FC = () => {
 
   const statsContent = (
     <div style={{ fontSize: 12, minWidth: 200, color: 'rgba(255,255,255,0.85)' }}>
+      {/* Session ID — dùng để debug đồng bộ giữa Web và CLI storage */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Session</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 10, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+          title={sessionId || '—'}
+          onClick={() => { if (sessionId) { navigator.clipboard.writeText(sessionId); message.success('Đã copy Session ID'); } }}
+        >{sessionId ? sessionId.slice(0, 8) + '…' : '—'}</span>
+      </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span style={{ color: 'rgba(255,255,255,0.45)' }}>Model</span>
         <span style={{ fontFamily: 'monospace' }}>{sessionStats.model || '—'}</span>

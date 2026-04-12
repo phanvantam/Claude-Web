@@ -56,7 +56,13 @@ export async function runSDKQuery(
     logger.warn(`[Claude][${sessionId}] Failed to load MCP servers:`, err);
   }
 
-  if (isResume) options.resume = sessionId;
+  if (isResume) {
+    options.resume = sessionId;
+  } else {
+    // Ép SDK dùng đúng UUID của web app — không để SDK tự sinh random
+    // Đảm bảo file .jsonl trên CLI storage khớp với sessionId trong DB
+    options.sessionId = sessionId;
+  }
   if (config.model) options.model = config.model;
 
   // ── Permission mode ──

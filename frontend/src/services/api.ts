@@ -134,8 +134,16 @@ export const claudeApi = {
     }),
   /** Lấy danh sách agent files */
   listAgents: () => fetchJSON<{ name: string; filename: string }[]>('/claude/agents'),
-  /** Lấy danh sách agents kèm description — dùng cho @mention autocomplete */
-  listAgentsWithDesc: () => fetchJSON<{ name: string; filename: string; description: string }[]>('/claude/agents/with-desc'),
+  /** Lấy danh sách agents kèm description — dùng cho @mention autocomplete.
+   *  Truyền projectId để scan cả project/local scope. */
+  listAgentsWithDesc: (projectId?: string) => {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    return fetchJSON<{
+      name: string; filename: string; description: string;
+      scope: 'user' | 'project' | 'local';
+      model?: string; tools?: string[]; permissionMode?: string;
+    }[]>(`/claude/agents/with-desc${query}`);
+  },
   /** Đọc nội dung agent */
   getAgent: (filename: string) => fetchJSON<{ content: string }>(`/claude/agents/${filename}`),
   /** Cập nhật nội dung agent */

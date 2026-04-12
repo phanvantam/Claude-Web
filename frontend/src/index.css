@@ -694,6 +694,47 @@ body {
   color: rgba(255, 255, 255, 0.35);
 }
 
+/* === Agent/Task Tool Card — hiển thị chuyên biệt cho sub-agent === */
+.agent-tool-card {
+  border-left: 2px solid var(--accent);
+  padding: 8px 12px;
+  background: rgba(108, 92, 231, 0.04);
+  border-radius: 0 8px 8px 0;
+}
+
+.agent-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.agent-tool-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent-light);
+}
+
+.agent-tool-prompt {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.agent-tool-result {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.agent-tool-result.error {
+  border-top-color: rgba(255, 107, 107, 0.2);
+}
+
 /* Nút hủy trong tool details */
 .tl-tool-abort {
   padding: 6px 0 2px;
@@ -870,6 +911,16 @@ body {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+.toolbar-btn-active {
+  color: var(--accent-light);
+  border-color: var(--border-accent);
+}
+
+.toolbar-btn-active:hover {
+  border-color: var(--accent);
+  background: rgba(108, 92, 231, 0.1);
 }
 
 
