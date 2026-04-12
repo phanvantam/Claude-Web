@@ -55,6 +55,100 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', activeSessions: claudeService.getActiveSessions().length });
 });
 
+/**
+ * DEBUG: Test SDK query trực tiếp — không qua session/socket.
+ * Mục đích duy nhất: xác nhận SDK có emit event 'result' hay không.
+ * GET /api/debug/sdk-test?cwd=/path/to/project
+ * Timeout 60s — nếu không nhận result trong 60s → trả lỗi.
+ */
+app.get('/api/debug/sdk-test', async (_req, res) => {
+  const cwd = (_req.query.cwd as string) || process.cwd();
+  const prompt = 'Trả lời đúng 1 từ: "ok"';
+  const startMs = Date.now();
+  const events: { type: string; elapsed: number; detail?: string }[] = [];
+  let gotResult = false;
+
+  try {
+    const sdk = await (await import('./services/claude/utils')).getSDK();
+
+    // Env sạch — loại bỏ biến PM2/parent có thể gây nested session
+    const cleanEnv: Record<string, string | undefined> = {
+      ...process.env,
+      CLAUDECODE: undefined,
+      CLAUDE_CODE_ENTRYPOINT: undefined,
+    };
+
+    const queryInstance = sdk.query({
+      prompt,
+      options: {
+        cwd,
+        env: cleanEnv,
+        permissionMode: 'acceptEdits',
+        systemPrompt: 'Bạn là bot test. Trả lời ngắn nhất có thể.',
+      },
+    });
+
+    // Timeout 60s — ép dừng nếu SDK treo
+    // interrupt() nội bộ gọi transport.write() async → phải await
+    const timeout = setTimeout(async () => {
+      try { await queryInstance.interrupt(); } catch {}
+    }, 60_000);
+
+    for await (const msg of queryInstance) {
+      const elapsed = Date.now() - startMs;
+      const type = msg.type as string;
+
+      events.push({
+        type,
+        elapsed,
+        detail: type === 'result'
+          ? `is_error=${(msg as any).is_error}, cost=$${(msg as any).total_cost_usd || 0}`
+          : type === 'assistant'
+            ? `blocks=${(msg as any).message?.content?.length || 0}`
+            : undefined,
+      });
+
+      logger.info(`[SDK-TEST] [T+${elapsed}ms] Event: ${type}`);
+
+      if (type === 'result') {
+        gotResult = true;
+        clearTimeout(timeout);
+        // Interrupt sau result để cleanup
+        try { await queryInstance.interrupt(); } catch {}
+      }
+    }
+
+    clearTimeout(timeout);
+
+    res.json({
+      success: true,
+      gotResult,
+      totalMs: Date.now() - startMs,
+      eventCount: events.length,
+      events,
+      env: {
+        CLAUDECODE: process.env.CLAUDECODE || '(not set)',
+        CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT || '(not set)',
+        NODE_ENV: process.env.NODE_ENV || '(not set)',
+      },
+    });
+  } catch (err: any) {
+    res.json({
+      success: false,
+      gotResult,
+      totalMs: Date.now() - startMs,
+      error: err.message || String(err),
+      eventCount: events.length,
+      events,
+      env: {
+        CLAUDECODE: process.env.CLAUDECODE || '(not set)',
+        CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT || '(not set)',
+        NODE_ENV: process.env.NODE_ENV || '(not set)',
+      },
+    });
+  }
+});
+
 // =========================
 // Socket.io Event Handling
 // =========================
@@ -335,6 +429,12 @@ process.on('uncaughtException', (err: any) => {
   // Đây là side effect bình thường khi ép SDK dừng — bỏ qua an toàn.
   if (err?.message?.includes('Query closed before response received')) {
     logger.warn('[Process] SDK Query closed after interrupt — expected, ignoring...');
+    return;
+  }
+  // interrupt() gọi transport.write() khi process đã đóng → async throw
+  // Side effect bình thường — không ảnh hưởng logic.
+  if (err?.message?.includes('ProcessTransport is not ready for writing')) {
+    logger.warn('[Process] ProcessTransport not ready (interrupt after close) — ignoring...');
     return;
   }
   logger.error('[Process] Uncaught Exception:', err);
