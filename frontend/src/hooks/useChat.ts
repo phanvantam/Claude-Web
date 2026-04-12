@@ -367,7 +367,7 @@ export function useChat(): UseChatReturn {
             type: 'tool_use',
             tool: {
               id: data.toolId || `stream-${data.blockIndex}`,
-              name: data.toolName,
+              name: data.toolName || 'unknown',
               input: {},
               streamingInput: '',
             },

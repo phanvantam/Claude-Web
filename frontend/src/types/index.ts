@@ -19,6 +19,8 @@ export interface ToolCall {
   input: Record<string, unknown>;
   result?: string;
   isError?: boolean;
+  /** Live preview input đang stream — chỉ tồn tại khi tool đang nhận delta */
+  streamingInput?: string;
 }
 
 /** Một tool call nội bộ của sub-agent — dùng để hiển thị trong collapsible section */

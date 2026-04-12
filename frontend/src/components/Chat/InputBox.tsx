@@ -5,7 +5,6 @@ import {
   RobotOutlined,
   StopOutlined,
   ThunderboltOutlined,
-  SafetyCertificateOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   QuestionCircleOutlined,

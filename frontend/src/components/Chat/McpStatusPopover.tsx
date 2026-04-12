@@ -178,7 +178,6 @@ const McpStatusPopover: React.FC<McpStatusPopoverProps> = ({ projectId, runtimeS
       const runtime = runtimeStatus.find(r => r.name === srv.name);
       const isConnected = runtime?.status === 'connected';
       const isFailed = runtime?.status === 'failed';
-      const isPending = runtime?.status === 'pending';
       const hasRuntime = !!runtime;
       const toolCount = runtime?.tools?.length || 0;
 
