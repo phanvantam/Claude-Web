@@ -59,10 +59,12 @@ app.get('/api/health', (_req, res) => {
  * DEBUG: Test SDK query trực tiếp — không qua session/socket.
  * Mục đích duy nhất: xác nhận SDK có emit event 'result' hay không.
  * GET /api/debug/sdk-test?cwd=/path/to/project
+ * GET /api/debug/sdk-test?cwd=/path&noMcp=1  ← tắt MCP servers để so sánh
  * Timeout 60s — nếu không nhận result trong 60s → trả lỗi.
  */
 app.get('/api/debug/sdk-test', async (_req, res) => {
   const cwd = (_req.query.cwd as string) || process.cwd();
+  const noMcp = _req.query.noMcp === '1';
   const prompt = 'Trả lời đúng 1 từ: "ok"';
   const startMs = Date.now();
   const events: { type: string; elapsed: number; detail?: string }[] = [];
@@ -78,14 +80,23 @@ app.get('/api/debug/sdk-test', async (_req, res) => {
       CLAUDE_CODE_ENTRYPOINT: undefined,
     };
 
+    const sdkOptions: Record<string, any> = {
+      cwd,
+      env: cleanEnv,
+      permissionMode: 'acceptEdits',
+      systemPrompt: 'Bạn là bot test. Trả lời ngắn nhất có thể.',
+    };
+
+    // noMcp=1: ép CLI không load MCP servers từ user config
+    // Nếu kết quả nhanh hơn đáng kể → MCP daemon giữ CLI alive là root cause
+    if (noMcp) {
+      sdkOptions.mcpServers = {};
+      sdkOptions.settingSources = [];
+    }
+
     const queryInstance = sdk.query({
       prompt,
-      options: {
-        cwd,
-        env: cleanEnv,
-        permissionMode: 'acceptEdits',
-        systemPrompt: 'Bạn là bot test. Trả lời ngắn nhất có thể.',
-      },
+      options: sdkOptions,
     });
 
     // Timeout 60s — ép dừng nếu SDK treo
