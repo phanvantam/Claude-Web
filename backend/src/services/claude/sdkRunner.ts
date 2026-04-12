@@ -229,11 +229,15 @@ export async function runSDKQuery(
           handleAssistantEvent(sdkMsg, sessionId, state, emitter, processor, ctx);
 
           // Phân loại assistant event để chọn watchdog phù hợp:
-          // - Có tool_use → tool sắp chạy, cần thời gian → watchdog dài
-          // - Chỉ text/thinking → khả năng cao là response cuối → watchdog ngắn
+          // - Có tool_use → tool sắp chạy → watchdog dài
+          // - Có thinking → model đang suy nghĩ, có thể tiếp tục bằng tool_use → watchdog dài
+          // - CHỈ có text (không thinking, không tool_use) → response cuối → watchdog ngắn
           const apiContent = (sdkMsg as any).message?.content;
           const hasToolUse = Array.isArray(apiContent) && apiContent.some((b: any) => b.type === 'tool_use');
-          resetWatchdog(hasToolUse ? WATCHDOG_LONG_MS : WATCHDOG_SHORT_MS);
+          const hasThinking = Array.isArray(apiContent) && apiContent.some((b: any) => b.type === 'thinking');
+          const hasText = Array.isArray(apiContent) && apiContent.some((b: any) => b.type === 'text');
+          const isFinalText = hasText && !hasToolUse && !hasThinking;
+          resetWatchdog(isFinalText ? WATCHDOG_SHORT_MS : WATCHDOG_LONG_MS);
           break;
         }
 
