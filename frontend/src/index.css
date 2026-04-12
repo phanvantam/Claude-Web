@@ -2088,10 +2088,15 @@ body {
   }
 
   .chat-textarea {
-    font-size: 14px;
-    /* Giữ 14px tránh iOS zoom */
+    font-size: 16px;
+    /* iOS Safari zoom-in nếu < 16px — bắt buộc >= 16px */
     min-height: 22px;
     max-height: 120px;
+  }
+
+  /* iOS Safari zoom-in bất kỳ input/textarea nào < 16px */
+  .ask-user-textarea {
+    font-size: 16px;
   }
 
   /* ── Permission panel — thu gọn ── */
