@@ -12,6 +12,8 @@ import ChatHeader from '../components/Chat/ChatHeader';
 import SubAgentDrawer from '../components/Chat/SubAgentDrawer';
 import SubAgentTimelineModal from '../components/Chat/SubAgentTimelineModal';
 import SkillDrawer from '../components/Chat/SkillDrawer';
+import StatsPopoverContent from './ChatPage/StatsPopoverContent';
+import { useSlashCommands } from './ChatPage/useSlashCommands';
 import type { Project, GlobalConfig, SubAgentInfo } from '../types';
 
 const ChatPage: React.FC = () => {
@@ -236,125 +238,21 @@ const ChatPage: React.FC = () => {
   };
   const permissionLabel = sessionPermissionMode ? (permissionLabelMap[sessionPermissionMode] || sessionPermissionMode) : 'Mặc định';
 
-  /**
-   * Xử lý gửi tin nhắn hoặc thực thi slash command.
-   * Các lệnh bắt đầu bằng '/' được chặn lại và xử lý cục bộ trên frontend,
-   * không gửi qua SDK để tránh Claude trả lời sống sượng.
-   */
-  const handleSend = useCallback((text: string) => {
-    if (!sessionId) {
-      message.warning('Hãy bắt đầu phiên chat trước');
-      return;
-    }
-
-    const trimmed = text.trim();
-
-    // Không phải slash command → kiểm tra @mention agent rồi gửi
-    if (!trimmed.startsWith('/')) {
-      // Transform @agent-name thành SDK directive
-      // Case 1: "@agent-name task text" → gọi agent với task cụ thể
-      const mentionWithTask = trimmed.match(/^@([a-z0-9_-]+)\s+([\s\S]+)/i);
-      if (mentionWithTask) {
-        const [, agentName, task] = mentionWithTask;
-        sendMessage(`Use the "${agentName}" subagent to: ${task}`);
-        return;
-      }
-      // Case 2: "@agent-name" không có task → gọi agent với context hiện tại
-      const mentionOnly = trimmed.match(/^@([a-z0-9_-]+)$/i);
-      if (mentionOnly) {
-        const agentName = mentionOnly[1];
-        sendMessage(`Use the "${agentName}" subagent to: assist with the current context`);
-        return;
-      }
-      sendMessage(trimmed);
-      return;
-    }
-
-    // Tách lệnh và tham số
-    const parts = trimmed.split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const args = parts.slice(1);
-
-    switch (cmd) {
-      case '/clear': {
-        // Tạo session mới hoàn toàn
-        if (projectId) {
-          startSession(projectId);
-          message.success('Bắt đầu cuộc hội thoại mới');
-        }
-        break;
-      }
-
-      case '/model': {
-        if (args.length > 0) {
-          handleModelChange(args[0]);
-          addSystemMessage(`### Thay đổi Model\n\nĐã chuyển sang model: **${args[0]}**`);
-        } else {
-          addSystemMessage(`### Thông tin Model\n\n**Model hiện tại:** \`${config.model || '—'}\``);
-        }
-        break;
-      }
-
-      case '/cost': {
-        const rows = [
-          `| Thông tin | Giá trị |`,
-          `| :--- | :--- |`,
-          `| **Model** | \`${sessionStats.model || '—'}\` |`,
-          `| **Tokens nhận** | ${sessionStats.inputTokens.toLocaleString('vi-VN')} |`,
-          `| **Tokens gửi** | ${sessionStats.outputTokens.toLocaleString('vi-VN')} |`,
-          `| **Tổng tokens** | **${sessionStats.totalTokens.toLocaleString('vi-VN')}** |`,
-          `| **Chi phí** | **$${sessionStats.cost.toFixed(4)}** |`,
-          `| **Lượt hỏi** | ${sessionStats.turns} |`,
-        ];
-        addSystemMessage(`### Thống kê phiên hiện tại\n\n${rows.join('\n')}`);
-        break;
-      }
-
-      case '/status': {
-        const statusRows = [
-          `| Thuộc tính | Trạng thái |`,
-          `| :--- | :--- |`,
-          `| **Session ID** | \`${sessionId}\` |`,
-          `| **Model** | \`${config.model || '—'}\` |`,
-          `| **Nỗ lực** | \`${effortLabel}\` |`,
-          `| **Quyền** | \`${permissionLabel}\` |`,
-          `| **Tin nhắn** | ${messages.length} |`,
-        ];
-        addSystemMessage(`### Trạng thái phiên\n\n${statusRows.join('\n')}`);
-        break;
-      }
-
-      case '/help': {
-        const helpLines = [
-          `### Danh sách lệnh khả dụng`,
-          ``,
-          `- \`/clear\` — **Làm mới**: Xóa lịch sử và bắt đầu hội thoại mới.`,
-          `- \`/cost\` — **Chi phí**: Xem thống kê token và chi phí phiên này.`,
-          `- \`/status\` — **Trạng thái**: Kiểm tra cấu hình phiên hiện tại.`,
-          `- \`/model [tên]\` — **Model**: Xem hoặc chuyển đổi AI model.`,
-          `- \`/compact\` — **Nén**: Tóm tắt ngữ cảnh (Claude sẽ thực hiện).`,
-          `- \`/help\` — **Trợ giúp**: Hiển thị danh sách này.`,
-          ``,
-          `*Mẹo: Bạn có thể @mention một agent (vd: \`@coder\`) để giao việc chuyên biệt.*`,
-        ];
-        addSystemMessage(helpLines.join('\n'));
-        break;
-      }
-
-      case '/compact': {
-        addSystemMessage(`**Đang nén context...** Claude sẽ tóm tắt nội dung và khởi tạo phiên mới để tối ưu bộ nhớ.`);
-        compactSession();
-        break;
-      }
-
-      default: {
-        // Custom/plugin slash command — forward cho Claude SDK xử lý.
-        // Claude CLI hỗ trợ custom commands natively (từ ~/.claude/commands/ hoặc plugins).
-        sendMessage(trimmed);
-        break;
-      }
-    }
-  }, [sessionId, projectId, config.model, sessionStats, messages.length, effortLabel, permissionLabel, sendMessage, startSession, handleModelChange, addSystemMessage, compactSession]);
+  // Slash commands + @mention agent — xử lý cục bộ trên frontend
+  const handleSend = useSlashCommands({
+    sessionId,
+    projectId,
+    configModel: config.model || '',
+    sessionStats,
+    messagesCount: messages.length,
+    effortLabel,
+    permissionLabel,
+    sendMessage,
+    startSession,
+    handleModelChange,
+    addSystemMessage,
+    compactSession,
+  });
 
   /**
    * Fetch danh sách sub-agents cho session hiện tại.
@@ -412,59 +310,13 @@ const ChatPage: React.FC = () => {
   }, [selectedAgentId, subAgents]);
 
   const statsContent = (
-    <div style={{ fontSize: 12, minWidth: 200, color: 'rgba(255,255,255,0.85)' }}>
-      {/* Session ID — dùng để debug đồng bộ giữa Web và CLI storage */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Session</span>
-        <span style={{ fontFamily: 'monospace', fontSize: 10, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
-          title={sessionId || '—'}
-          onClick={() => { if (sessionId) { navigator.clipboard.writeText(sessionId); message.success('Đã copy Session ID'); } }}
-        >{sessionId ? sessionId.slice(0, 8) + '…' : '—'}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Model</span>
-        <span style={{ fontFamily: 'monospace' }}>
-          {(() => {
-            const m = sessionStats.model;
-            const normalized = m?.replace(/\[.*\]/, '').trim();
-            const found = modelOptions.find(opt => 
-              opt.key === m || opt.key === normalized || 
-              opt.modelId === m || opt.modelId === normalized ||
-              (opt.modelId && m && (m.startsWith(opt.modelId) || opt.modelId.startsWith(m)))
-            );
-            return found?.label || m || '—';
-          })()}
-        </span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Nỗ lực</span>
-        <span style={{ fontFamily: 'monospace' }}>{effortLabel}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Quyền</span>
-        <span style={{ fontFamily: 'monospace' }}>{permissionLabel}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Tokens nhận</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{sessionStats.inputTokens.toLocaleString('vi-VN')}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Tokens gửi</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{sessionStats.outputTokens.toLocaleString('vi-VN')}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Tổng tokens</span>
-        <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{sessionStats.totalTokens.toLocaleString('vi-VN')}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Chi phí</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>${sessionStats.cost.toFixed(4)}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>Số lượt</span>
-        <span>{sessionStats.turns}</span>
-      </div>
-    </div>
+    <StatsPopoverContent
+      sessionId={sessionId}
+      sessionStats={sessionStats}
+      modelOptions={modelOptions}
+      effortLabel={effortLabel}
+      permissionLabel={permissionLabel}
+    />
   );
 
   return (

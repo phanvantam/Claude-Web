@@ -1,0 +1,337 @@
+/* ========================================
+   PROJECT DASHBOARD
+   ======================================== */
+.proj-dash {
+  padding: 28px 32px;
+  max-width: 960px;
+  margin: 0 auto;
+  min-height: 100vh;
+  animation: projDashFadeIn 0.35s ease-out;
+}
+
+@keyframes projDashFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ── */
+.proj-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.proj-dash-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.proj-dash-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.proj-dash-breadcrumb-home {
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.proj-dash-breadcrumb-home:hover {
+  color: var(--accent);
+}
+
+.proj-dash-breadcrumb-current {
+  color: var(--text-secondary);
+}
+
+.proj-dash-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 10px;
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Quick Action Buttons ── */
+.proj-dash-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  align-items: flex-start;
+  padding-top: 32px;
+}
+
+.proj-dash-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+
+.proj-dash-btn-resume {
+  background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(108, 92, 231, 0.35);
+}
+
+.proj-dash-btn-resume:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(108, 92, 231, 0.5);
+}
+
+.proj-dash-btn-new {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.proj-dash-btn-new:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+/* ── Stats Grid ── */
+.proj-dash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.proj-dash-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  transition: all 0.25s ease;
+}
+
+.proj-dash-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.proj-dash-stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.proj-dash-stat-body {
+  min-width: 0;
+}
+
+.proj-dash-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.proj-dash-stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ── Section ── */
+.proj-dash-section {
+  margin-bottom: 24px;
+}
+
+.proj-dash-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.proj-dash-empty {
+  padding: 48px 0;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* ── Session List ── */
+.proj-dash-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proj-dash-session-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.proj-dash-session-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-glow);
+  transform: translateX(4px);
+}
+
+.proj-dash-session-card:hover .proj-dash-session-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.proj-dash-session-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.proj-dash-session-index {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(108, 92, 231, 0.1);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.proj-dash-session-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.proj-dash-session-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.proj-dash-session-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proj-dash-session-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.proj-dash-session-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.proj-dash-session-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.proj-dash-session-arrow {
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .proj-dash {
+    padding: 16px;
+  }
+
+  .proj-dash-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .proj-dash-actions {
+    padding-top: 0;
+    width: 100%;
+  }
+
+  .proj-dash-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .proj-dash-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .proj-dash-session-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .proj-dash-session-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .proj-dash-session-arrow {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,0 +1,313 @@
+
+/* ========================================
+   SUB-AGENT USAGE CHIPS (RESTORED)
+   ======================================== */
+.subagent-usage-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+.subagent-usage-chips span {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-id-chip {
+  color: var(--accent) !important;
+  background: rgba(108, 92, 231, 0.1) !important;
+  border: 1px solid rgba(108, 92, 231, 0.1);
+}
+
+/* ========================================
+   SUB-AGENT RESULT & TIMELINE
+   ======================================== */
+.tl-subagent-result-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+
+.tl-subagent-result-card.success {
+  border-color: rgba(81, 207, 102, 0.2);
+}
+
+.tl-subagent-result-card.error {
+  border-color: rgba(255, 107, 107, 0.2);
+}
+
+.subagent-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.subagent-result-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subagent-result-icon {
+  display: flex;
+  align-items: center;
+}
+
+.subagent-result-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.subagent-result-toggle {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.subagent-activities-list {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.subagent-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.subagent-activity-item:last-child {
+  border-bottom: none;
+}
+
+.subagent-activity-status {
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.subagent-activity-status.done {
+  color: var(--success);
+}
+
+.subagent-activity-status.error {
+  color: var(--danger);
+}
+
+.subagent-activity-name {
+  color: var(--accent-light);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.subagent-activity-summary {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.subagent-result-body {
+  padding: 12px;
+}
+
+.tl-subagent-indicator {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0;
+  padding: 6px 12px;
+  background: rgba(108, 92, 231, 0.1);
+  border: 1px dashed rgba(108, 92, 231, 0.3);
+  border-radius: 8px;
+}
+
+/* Tên tool đang chạy nội bộ sub-agent — hiện sáng hơn, cam nhẹ */
+.tl-subagent-current-tool {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  color: rgba(225, 112, 85, 0.85);
+  background: rgba(225, 112, 85, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Số bước đã thực hiện */
+.tl-subagent-step-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.tl-subagent-name {
+  color: var(--accent-light);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+/* Badge nhỏ hiển thị khi nhận heartbeat từ SDK — cho người dùng biết agent vẫn sống */
+.tl-subagent-heartbeat {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 10px;
+  color: rgba(81, 207, 102, 0.7);
+  background: rgba(81, 207, 102, 0.08);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 400;
+}
+
+.tl-dot.dot-subagent {
+  color: var(--accent);
+  background: var(--bg-primary);
+  animation: dotPulse 1.5s infinite;
+}
+
+.tl-dot.dot-subagent-result {
+  color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.tl-dot.dot-subagent-result.success {
+  color: var(--success);
+}
+
+.tl-dot.dot-subagent-result.error {
+  color: var(--danger);
+}
+
+/* ========================================
+   SUB-AGENT TIMELINE MODAL
+   ======================================== */
+.subagent-timeline {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.sa-tl-row {
+  display: flex;
+  gap: 16px;
+  position: relative;
+  min-height: 48px;
+}
+
+.sa-tl-line-col {
+  width: 24px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sa-tl-line {
+  position: absolute;
+  top: 24px;
+  bottom: -24px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sa-tl-row:last-child .sa-tl-line {
+  display: none;
+}
+
+.sa-tl-dot {
+  position: absolute;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sa-tl-dot.thinking {
+  border-color: rgba(241, 196, 15, 0.3);
+}
+
+.sa-tl-dot.tool_use {
+  border-color: rgba(225, 112, 85, 0.3);
+}
+
+.sa-tl-dot.tool_result {
+  border-color: rgba(81, 207, 102, 0.3);
+}
+
+.sa-tl-dot.text {
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.sa-tl-content {
+  flex: 1;
+  padding-bottom: 24px;
+  min-width: 0;
+}
+
+.sa-tl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-top: 8px;
+}
+
+.sa-tl-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sa-tl-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sa-tl-body {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.sa-tl-type-thinking {
+  opacity: 0.7;
+}
+
+.sa-tl-type-tool_use .tl-tool-json,
+.sa-tl-type-tool_result .tl-tool-json {
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+

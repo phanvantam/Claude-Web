@@ -1,0 +1,149 @@
+/* ========================================
+   MARKDOWN STYLES
+   ======================================== */
+.markdown-body {
+  line-height: 1.7;
+}
+
+.markdown-body p {
+  margin-bottom: 2px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  color: var(--text-primary);
+  /* Heading cùng font-size với body — chỉ khác weight để không bị to bé */
+  font-size: inherit;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  line-height: 1.5;
+}
+
+.markdown-body h1 {
+  font-weight: 700;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  background: rgba(108, 92, 231, 0.05);
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-body hr {
+  border: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
+}
+
+.inline-code {
+  background: rgba(108, 92, 231, 0.15);
+  color: var(--accent-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+}
+
+.code-block {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.code-block code {
+  background: transparent !important;
+  padding: 0;
+  font-size: inherit;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: rgba(108, 92, 231, 0.1);
+  color: var(--accent-light);
+  font-weight: 600;
+}
+
+.markdown-body tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.md-link {
+  color: var(--accent-light) !important;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(184, 176, 255, 0.3);
+  transition: all 0.2s ease;
+}
+
+.md-link:hover {
+  color: #fff !important;
+  border-bottom-color: var(--accent-light);
+}
+
+/* ========================================
+   DARK MODAL
+   ======================================== */
+.dark-modal .ant-modal-content {
+  background: #1e1e32 !important;
+  border: 1px solid var(--border);
+}
+
+.dark-modal .ant-modal-header {
+  background: #1e1e32 !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.dark-modal .ant-modal-title {
+  color: var(--text-primary) !important;
+}
+
+.dark-modal .ant-modal-close {
+  color: var(--text-secondary) !important;
+}
+
+.dark-modal .ant-modal-close:hover {
+  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+

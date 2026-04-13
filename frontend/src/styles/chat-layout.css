@@ -1,0 +1,250 @@
+/* ========================================
+   CHAT PAGE
+   ======================================== */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Overlay loading khi chuyển phiên — backdrop blur + chặn mọi interaction */
+.session-switch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 15, 0.55);
+  backdrop-filter: blur(6px);
+  animation: switchOverlayIn 0.2s ease-out;
+}
+
+@keyframes switchOverlayIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+
+  to {
+    opacity: 1;
+    backdrop-filter: blur(6px);
+  }
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(10, 10, 15, 0.5);
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+  min-width: 0;
+  max-width: 60%;
+}
+
+.chat-header-left:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Đường dẫn dự án dạng monospace, cắt ellipsis khi quá dài */
+.chat-header-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ========================================
+   CHAT WINDOW
+   ======================================== */
+.chat-window {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  padding-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+/* Indicator tải thêm messages cũ hơn */
+.chat-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  gap: 6px;
+}
+
+/* ========================================
+   TIMELINE: USER ROW
+   ======================================== */
+.tl-user-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 0 4px;
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+.tl-user-bubble {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 100%;
+  word-wrap: break-word;
+  font-weight: 400;
+}
+
+.tl-user-row .tl-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  padding-right: 4px;
+}
+
+/* ========================================
+   TIMELINE: SYSTEM ROW
+   ======================================== */
+.tl-system-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  animation: messageSlideIn 0.2s ease-out;
+}
+
+.tl-system-content {
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 2px 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  max-width: 85%;
+  text-align: left;
+  position: relative;
+}
+
+.tl-system-icon-wrapper {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 16px;
+  color: var(--accent);
+  opacity: 0.5;
+}
+
+.tl-system-content h1,
+.tl-system-content h2,
+.tl-system-content h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 24px;
+  /* Tránh đè lên icon tuyệt đối */
+}
+
+.tl-system-content .markdown-body table {
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.tl-system-content .markdown-body p {
+  margin-bottom: 4px;
+}
+
+/* Đổi màu xanh cho giá trị Chi phí trong bảng thống kê */
+.tl-system-content table tr:nth-child(5) td:last-child strong {
+  color: var(--success);
+}
+
+/* ========================================
+   TIMELINE: ASSISTANT ROW (Two-Column)
+   ======================================== */
+.tl-assistant-row {
+  display: flex;
+  gap: 0;
+  padding: 6px 0 2px;
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+/* Left column: holds the continuous vertical line */
+.tl-line-col {
+  width: 28px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.tl-line {
+  width: 2px;
+  background: rgba(108, 92, 231, 0.3);
+  min-height: 100%;
+  margin: -5px;
+}
+
+.tl-line.streaming {
+  background: linear-gradient(180deg, rgba(108, 92, 231, 0.5), rgba(108, 92, 231, 0.15));
+  animation: linePulse 1.5s ease-in-out infinite;
+}
+
+.tl-line.thinking {
+  background: rgba(108, 92, 231, 0.2);
+  animation: linePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes linePulse {
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Right column: all the block rows + meta */
+.tl-content-col {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+

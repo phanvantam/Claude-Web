@@ -1,0 +1,224 @@
+/* === AskUserQuestion panel — câu hỏi tương tác từ Claude === */
+.ask-user-panel {
+  border-color: rgba(108, 92, 231, 0.3);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(108, 92, 231, 0.1);
+}
+
+.ask-user-panel .permission-panel-icon {
+  color: var(--accent);
+}
+
+.ask-user-panel .permission-panel-title {
+  color: var(--accent-light);
+}
+
+.ask-user-question-block {
+  padding: 10px 14px;
+}
+
+.ask-user-question-block+.ask-user-question-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ask-user-question-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 6px 0 10px;
+  line-height: 1.5;
+}
+
+/* Options mode — danh sách button chọn */
+.ask-user-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-user-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.ask-user-option-btn:hover {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.ask-user-option-btn:active {
+  transform: scale(0.98);
+}
+
+.ask-user-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+}
+
+.ask-user-option-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+}
+
+/* Free text mode — textarea nhập tự do */
+.ask-user-text-input {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ask-user-textarea {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.ask-user-textarea:focus {
+  border-color: var(--accent);
+}
+
+.ask-user-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* === Slash command popup === */
+.slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 20px;
+  right: 20px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(22, 22, 38, 0.98);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  margin-bottom: 6px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  z-index: 9999;
+}
+
+.slash-menu-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 10px 6px;
+}
+
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.slash-item:hover,
+.slash-item.active {
+  background: rgba(108, 92, 231, 0.12);
+}
+
+.slash-cmd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.slash-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Agent desc: truncate 1 dòng — nội dung đầy đủ hiện qua icon ? */
+.slash-desc-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon ? hiện full agent description khi hover/tap */
+.agent-desc-help {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  padding-left: 6px;
+  transition: color 0.2s ease;
+}
+
+.agent-desc-help:hover {
+  color: var(--accent-light);
+}
+
+/* Tag nguồn gốc plugin */
+.slash-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* === Model dropdown menu items === */
+.model-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-menu-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.model-menu-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Icon dấu hỏi trong dropdown menu — căn phải, hover highlight */
+.menu-item-help {
+  margin-left: auto;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  padding-left: 8px;
+}
+
+.menu-item-help:hover {
+  color: var(--accent-light);
+}
+

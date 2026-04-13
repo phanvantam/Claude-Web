@@ -1,0 +1,68 @@
+/* ========================================
+   ANTD OVERRIDES
+   ======================================== */
+.ant-layout-sider-trigger {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-top: 1px solid var(--border);
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(108, 92, 231, 0.15) !important;
+}
+
+.ant-form-item-label>label {
+  color: var(--text-secondary) !important;
+}
+
+.ant-empty-description {
+  color: var(--text-muted) !important;
+}
+
+/* ========================================
+   SETTINGS TABS
+   ======================================== */
+.settings-tabs .ant-tabs-nav {
+  margin-bottom: 20px !important;
+}
+
+.settings-tabs .ant-tabs-nav::before {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.settings-tabs .ant-tabs-tab {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: none !important;
+  border-radius: 10px 10px 0 0 !important;
+  color: var(--text-secondary) !important;
+  padding: 8px 20px !important;
+  transition: all 0.25s ease;
+  font-size: 13px;
+}
+
+.settings-tabs .ant-tabs-tab:hover {
+  color: var(--text-primary) !important;
+  background: rgba(108, 92, 231, 0.06) !important;
+}
+
+.settings-tabs .ant-tabs-tab-active {
+  background: rgba(108, 92, 231, 0.12) !important;
+  border-color: rgba(108, 92, 231, 0.3) !important;
+}
+
+.settings-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-light) !important;
+  font-weight: 600;
+}
+
+.settings-tabs .ant-tabs-ink-bar {
+  background: var(--accent) !important;
+  height: 2px !important;
+}
+
+/* Monaco editor wrapper — bo tròn và viền */
+.settings-tabs .monaco-editor,
+.settings-tabs .monaco-editor .overflow-guard {
+  border-radius: 8px !important;
+}
+
