@@ -24,6 +24,20 @@ router.get('/:id', (req, res) => {
   res.json({ ...project, activeSessionId });
 });
 
+/**
+ * GET /api/projects/:id/sessions — Danh sách phiên chat của dự án.
+ * Dùng cho Project Dashboard hiển thị lịch sử hội thoại theo project.
+ */
+router.get('/:id/sessions', (req, res) => {
+  try {
+    const { getSessionsByProject } = require('../services/session');
+    const sessions = getSessionsByProject(req.params.id);
+    res.json(sessions);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/projects
 router.post('/', (req, res) => {
   const { name, path, description } = req.body;

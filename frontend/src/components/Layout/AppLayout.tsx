@@ -6,7 +6,6 @@ import {
   ThunderboltOutlined,
   FolderOpenOutlined,
   ProjectOutlined,
-  PlusOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SyncOutlined,
@@ -151,10 +150,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       label: proj.name,
       children: [
         {
-          key: `/chat/${proj.id}?new=true`,
-          icon: <PlusOutlined />,
-          label: 'Cuộc trò chuyện mới',
-          onClick: () => navigate(`/chat/${proj.id}?new=true`),
+          key: `/project/${proj.id}`,
+          icon: <FolderOpenOutlined />,
+          label: 'Tổng quan',
+          onClick: () => navigate(`/project/${proj.id}`),
         },
         ...projSessions.map(session => ({
           key: `/chat/${proj.id}?sessionId=${session.id}`,

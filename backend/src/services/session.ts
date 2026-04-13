@@ -20,10 +20,16 @@ export function getAllSessions(): (Omit<ChatSession, 'messages'> & { messageCoun
 
 /**
  * Lấy sessions theo project ID.
+ * - total_cost: COALESCE từ sessions.total_cost, fallback tính từ SUM(chat_messages.cost).
+ * - total_tokens_input/output: luôn tính từ SUM(chat_messages) vì sessions table không có cột tokens.
  */
 export function getSessionsByProject(projectId: string): (Omit<ChatSession, 'messages'> & { messageCount: number })[] {
   const rows = db.prepare(
-    `SELECT s.id, s.project_id, s.session_id, s.name, s.is_active, s.total_cost, s.model, s.effort_level, s.permission_mode, s.created_at, s.updated_at,
+    `SELECT s.id, s.project_id, s.session_id, s.name, s.is_active,
+       COALESCE(s.total_cost, (SELECT SUM(m.cost) FROM chat_messages m WHERE m.session_id = s.id AND m.cost IS NOT NULL)) AS total_cost,
+       (SELECT SUM(m.tokens_input) FROM chat_messages m WHERE m.session_id = s.id AND m.tokens_input IS NOT NULL) AS total_tokens_input,
+       (SELECT SUM(m.tokens_output) FROM chat_messages m WHERE m.session_id = s.id AND m.tokens_output IS NOT NULL) AS total_tokens_output,
+       s.model, s.effort_level, s.permission_mode, s.created_at, s.updated_at,
        (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count
      FROM sessions s WHERE s.project_id = ? ORDER BY s.updated_at DESC`
   ).all(projectId) as any[];
@@ -298,6 +304,8 @@ function rowToSession(row: any): Omit<ChatSession, 'messages'> & { messageCount:
     name: row.name ?? undefined,
     isActive: row.is_active === 1,
     totalCost: row.total_cost ?? undefined,
+    totalInputTokens: row.total_tokens_input != null ? Number(row.total_tokens_input) : undefined,
+    totalOutputTokens: row.total_tokens_output != null ? Number(row.total_tokens_output) : undefined,
     model: row.model ?? undefined,
     effortLevel: row.effort_level ?? undefined,
     permissionMode: row.permission_mode ?? undefined,

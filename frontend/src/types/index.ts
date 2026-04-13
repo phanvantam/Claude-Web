@@ -72,6 +72,8 @@ export interface ChatSession {
   updatedAt: string;
   isActive: boolean;
   totalCost?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
   model?: string;
   effortLevel?: string;
   permissionMode?: string;

@@ -25,6 +25,9 @@ export const projectsApi = {
     fetchJSON<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) =>
     fetchJSON<void>(`/projects/${id}`, { method: 'DELETE' }),
+  /** Lấy danh sách sessions thuộc về project — dùng cho Project Dashboard */
+  getSessions: (id: string) =>
+    fetchJSON<import('../types').ChatSession[]>(`/projects/${id}/sessions`),
 };
 
 // Config API
@@ -87,6 +90,7 @@ export interface SlashCommand {
 export interface ModelInfo {
   key: string;
   label: string;
+  shortLabel?: string;
   modelId?: string;
 }
 

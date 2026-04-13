@@ -87,7 +87,7 @@ const Dashboard: React.FC = () => {
   };
 
   const openChat = (project: Project) => {
-    navigate(`/chat/${project.id}`);
+    navigate(`/project/${project.id}`);
   };
 
   return (

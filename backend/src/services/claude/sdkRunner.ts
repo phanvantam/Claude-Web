@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
 import { ChatMessage, ToolCall, ContentBlock, SubAgentActivity } from '../../types';
-import { updateSession } from '../session';
+import { updateSession, getSession } from '../session';
 import { getMcpServersDetailed, buildSDKAgentDefinitions } from '../claude-meta';
 import { logger } from '../logger';
 import { ClaudeSessionState, SDKQueryConfig } from './types';
@@ -106,6 +106,7 @@ export async function runSDKQuery(
     { signal }: { signal: AbortSignal },
   ) => {
     logger.info(`[Claude][${sessionId}] canUseTool called for: ${toolName}`);
+    state.activeToolName = toolName;
     emitter.emit('status', { sessionId, status: 'tool_use', toolName });
 
     // AskUserQuestion — LUÔN chờ user trả lời, bất kể permission mode
@@ -267,10 +268,27 @@ export async function runSDKQuery(
   const startTime = Date.now();
   const getElapsed = () => `${Date.now() - startTime}ms`;
 
+  const syncPartialTurnToState = () => {
+    state.partialAssistantBlocks = [...ctx.turnBlocks];
+    state.partialToolCalls = [...ctx.turnToolCalls];
+    state.partialAssistantContent = ctx.turnTextParts.join('');
+  };
+
+  const clearPartialTurnInState = () => {
+    state.partialAssistantBlocks = undefined;
+    state.partialToolCalls = undefined;
+    state.partialAssistantContent = undefined;
+  };
+
   try {
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Starting sdk.query (string prompt)...`);
     // claude-agent-sdk: dùng string prompt trực tiếp, SDK tự đóng stdin → không treo pipe
-    queryInstance = sdk.query({ prompt: message, options });
+    queryInstance = sdk.query({
+      prompt: message,
+      options,
+      // Đưa pathToClaudeCodeExecutable ra ngoài cấp root của object cấu hình
+      pathToClaudeCodeExecutable: utils.getClaudeBinary()
+    });
 
     // Restore stream timeout env sau khi query bắt đầu (Query constructor đã bắt giá trị)
     if (prevStreamTimeout !== undefined) {
@@ -329,6 +347,7 @@ export async function runSDKQuery(
           } else {
             // System init và các subtype khác
             emitter.emit('system', { sessionId, data: sdkMsg });
+            state.activeToolName = undefined;
             emitter.emit('status', { sessionId, status: 'thinking', startedAt: state.processingStartedAt });
           }
 
@@ -382,6 +401,13 @@ export async function runSDKQuery(
               const cb = rawEvent.content_block;
               if (cb?.type === 'tool_use') {
                 // Sub-agent bắt đầu gọi tool → emit activity mới ngay lập tức
+                if (state.activeSubAgent) {
+                  state.activeSubAgent = {
+                    ...state.activeSubAgent,
+                    currentToolName: cb.name || 'unknown',
+                    lastHeartbeat: Date.now(),
+                  };
+                }
                 emitter.emit('subagent:activity', {
                   sessionId,
                   parentToolUseId: parentId,
@@ -394,6 +420,12 @@ export async function runSDKQuery(
               const delta = rawEvent.delta;
               if (delta?.type === 'text_delta' && delta.text) {
                 // Sub-agent đang viết text → emit để hiện preview
+                if (state.activeSubAgent) {
+                  state.activeSubAgent = {
+                    ...state.activeSubAgent,
+                    lastHeartbeat: Date.now(),
+                  };
+                }
                 emitter.emit('subagent:activity', {
                   sessionId,
                   parentToolUseId: parentId,
@@ -521,6 +553,13 @@ export async function runSDKQuery(
           // Xử lý các event type mới từ SDK (task_progress, prompt_suggestion, rate_limit)
           if (type === 'task_progress') {
             // Heartbeat mỗi ~30s từ sub-agent đang chạy (khi agentProgressSummaries = true)
+            if (state.activeSubAgent) {
+              state.activeSubAgent = {
+                ...state.activeSubAgent,
+                lastHeartbeat: Date.now(),
+              };
+              syncPartialTurnToState();
+            }
             emitter.emit('task:progress', {
               sessionId,
               taskId: (sdkMsg as any).task_id,
@@ -560,9 +599,13 @@ export async function runSDKQuery(
     clearInterval(saveInterval);
     state.abortController = undefined;
     state.pendingPermission = undefined;
+    clearPartialTurnInState();
     if (state.isProcessing) {
       logger.warn(`[Claude][${sessionId}] finally: isProcessing still true — forcing idle`);
       state.isProcessing = false;
+      state.activeToolName = undefined;
+      state.activeSubAgent = undefined;
+      clearPartialTurnInState();
       emitter.emit('status', { sessionId, status: 'idle' });
     }
   }
@@ -588,6 +631,11 @@ function handleAssistantEvent(
   ctx: any,
   parentToolUseId: string | null,
 ): void {
+  const syncPartialTurnToState = () => {
+    state.partialAssistantBlocks = [...ctx.turnBlocks];
+    state.partialToolCalls = [...ctx.turnToolCalls];
+    state.partialAssistantContent = ctx.turnTextParts.join('');
+  };
   const apiMsg = sdkMsg.message;
   if (!apiMsg || !apiMsg.content) return;
 
@@ -617,6 +665,7 @@ function handleAssistantEvent(
       } else {
         ctx.turnTextParts.push(block.text);
         ctx.turnBlocks.push({ type: 'text', text: block.text });
+        syncPartialTurnToState();
         // Chỉ emit khi CHƯA có stream_event xử lý (fallback)
         if (!skipEmit) {
           emitter.emit('stream', {
@@ -630,6 +679,7 @@ function handleAssistantEvent(
       const thinkingText = (block as any).thinking || (block as any).thought || (typeof (block as any).content === 'string' ? (block as any).content : '');
       if (thinkingText && !isInsideSubAgent) {
         ctx.turnBlocks.push({ type: 'thinking', thinking: thinkingText });
+        syncPartialTurnToState();
         logger.info(`[Claude][${sessionId}] Thinking block (len: ${thinkingText.length})`);
       }
     } else if (block.type === 'tool_use') {
@@ -646,6 +696,13 @@ function handleAssistantEvent(
         ctx.subAgentNames.set(tc.id, agentName);
         ctx.subAgentActivityMap.set(tc.id, []);
         ctx.turnBlocks.push({ type: 'tool_use', tool: tc });
+        syncPartialTurnToState();
+        state.activeSubAgent = {
+          name: agentName,
+          prompt: block.input?.description || '',
+          lastHeartbeat: Date.now(),
+          activities: [],
+        };
         emitter.emit('subagent:started', { sessionId, agentName, prompt: block.input?.description || '' });
       } else if (isInsideSubAgent) {
         // Tool call nội bộ của sub-agent — track activity + emit cho frontend live preview
@@ -655,6 +712,17 @@ function handleAssistantEvent(
         // Emit ngay để frontend cập nhật phần mở rộng Agent card
         // Extract thông tin chính từ input để hiển thị chi tiết
         const inputSummary = extractToolInputSummary(tc.name, tc.input);
+        if (state.activeSubAgent) {
+          state.activeSubAgent = {
+            ...state.activeSubAgent,
+            lastHeartbeat: Date.now(),
+            currentToolName: tc.name,
+            activities: [
+              ...(state.activeSubAgent.activities || []),
+              { toolName: tc.name, inputSummary, timestamp: Date.now() },
+            ],
+          };
+        }
         emitter.emit('subagent:activity', {
           sessionId,
           parentToolUseId,
@@ -667,15 +735,18 @@ function handleAssistantEvent(
         // Tool call bình thường — tích lũy vào ctx
         ctx.turnToolCalls.push(tc);
         ctx.turnBlocks.push({ type: 'tool_use', tool: tc });
+        syncPartialTurnToState();
         // Chỉ emit stream:tool khi CHƯA có stream_event (fallback)
         if (!skipEmit) {
           emitter.emit('stream:tool', { sessionId, tool: tc });
         }
         // Status luôn emit — cập nhật thanh trạng thái bất kể stream mode
+        state.activeToolName = tc.name;
         emitter.emit('status', { sessionId, status: 'tool_use', toolName: tc.name });
       }
     } else if (block.type === 'tool_result') {
       processor.handleToolResult(block, ctx, parentToolUseId);
+      syncPartialTurnToState();
     } else {
       logger.debug(`[Claude][${sessionId}] Unhandled block type: ${block.type}`);
     }
@@ -703,6 +774,20 @@ function handleResultEvent(
   const costUsd = result.total_cost_usd || 0;
   const durationMs = result.duration_ms || 0;
   const usage = result.usage;
+
+  // Cộng dồn chi phí vào sessions.total_cost — mỗi lượt chat cộng thêm costUsd.
+  // Lý do cộng dồn thay vì ghi đè: result.total_cost_usd là chi phí của LỰC LƯỢT hiện tại,
+  // không phải tổng tích lũy toàn session.
+  if (costUsd > 0) {
+    try {
+      const existing = getSession(sessionId);
+      const prevCost = existing?.totalCost ?? 0;
+      updateSession(sessionId, { totalCost: prevCost + costUsd });
+      logger.info(`[Claude][${sessionId}] totalCost updated: ${prevCost} + ${costUsd} = ${prevCost + costUsd}`);
+    } catch (e) {
+      logger.warn(`[Claude][${sessionId}] Failed to update totalCost:`, e);
+    }
+  }
 
   if (result.is_error) {
     logger.error(`[Claude] Result error:`, JSON.stringify(result, null, 2));
@@ -763,6 +848,11 @@ function handleResultEvent(
 
   state.isProcessing = false;
   state.pendingPermission = undefined;
+  state.activeToolName = undefined;
+  state.activeSubAgent = undefined;
+  state.partialAssistantBlocks = undefined;
+  state.partialToolCalls = undefined;
+  state.partialAssistantContent = undefined;
   emitter.emit('status', { sessionId, status: 'idle' });
 
   // Interrupt stream sau khi xong — cleanup resources (claude-agent-sdk)

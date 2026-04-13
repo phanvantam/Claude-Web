@@ -30,8 +30,9 @@ export class ClaudeService extends EventEmitter {
     const project = getProject(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
 
+    // Nếu session đã có trong memory → giữ nguyên state hiện tại (bao gồm isProcessing)
     if (this.sessions.has(sessionId)) {
-      logger.info(`[ClaudeService] Session ${sessionId} found in memory`);
+      logger.info(`[ClaudeService] Session ${sessionId} found in memory, preserving current state`);
       return sessionId;
     }
 
@@ -175,6 +176,11 @@ export class ClaudeService extends EventEmitter {
           toolName: state.pendingPermission.toolName,
           input: state.pendingPermission.input,
         } : undefined,
+        activeToolName: state.activeToolName,
+        activeSubAgent: state.activeSubAgent,
+        partialAssistantBlocks: state.partialAssistantBlocks,
+        partialToolCalls: state.partialToolCalls,
+        partialAssistantContent: state.partialAssistantContent,
       };
     }
 

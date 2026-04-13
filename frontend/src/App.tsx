@@ -3,6 +3,7 @@ import { ConfigProvider, theme } from 'antd';
 import AppLayout from './components/Layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import ChatPage from './pages/ChatPage';
+import ProjectDashboard from './pages/ProjectDashboard';
 import Settings from './pages/Settings';
 import { useEffect } from 'react';
 import { socketService } from './services/socket';
@@ -65,6 +66,7 @@ function App() {
         <AppLayout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/project/:projectId" element={<ProjectDashboard />} />
             <Route path="/chat/:projectId" element={<ChatPage />} />
             <Route path="/chat" element={<Dashboard />} />
             <Route path="/settings" element={<Settings />} />

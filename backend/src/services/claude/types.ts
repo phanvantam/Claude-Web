@@ -1,4 +1,4 @@
-import { ChatMessage } from '../../types';
+import { ChatMessage, ContentBlock, ToolCall } from '../../types';
 
 export interface ClaudeSessionState {
   sessionId: string;
@@ -20,6 +20,22 @@ export interface ClaudeSessionState {
     input: Record<string, unknown>;
     resolve: (result: any) => void;
   };
+  /** Tool đang chạy gần nhất khi status = tool_use */
+  activeToolName?: string;
+  /** Sub-agent đang hoạt động (nếu có) để restore UI sau reload */
+  activeSubAgent?: {
+    name: string;
+    prompt: string;
+    lastHeartbeat?: number;
+    activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
+    currentToolName?: string;
+  };
+  /** Partial blocks của assistant turn đang chạy — để restore UI sau reload */
+  partialAssistantBlocks?: ContentBlock[];
+  /** Partial toolCalls của assistant turn đang chạy */
+  partialToolCalls?: ToolCall[];
+  /** Partial text content string đang tích lũy */
+  partialAssistantContent?: string;
 }
 
 /** Config truyền vào runSDKQuery — tách riêng để dùng chung */

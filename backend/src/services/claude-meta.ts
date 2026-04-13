@@ -24,8 +24,10 @@ export interface SlashCommand {
 export interface ModelInfo {
   /** Key/alias, ví dụ: 'sonnet' */
   key: string;
-  /** Tên hiển thị */
+  /** Tên đầy đủ (vd: Claude Sonnet...) */
   label: string;
+  /** Tên hiển thị ngắn (vd: Sonnet) */
+  shortLabel?: string;
   /** Model ID thực tế nếu có (từ settings env) */
   modelId?: string;
 }
@@ -47,9 +49,9 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
 
 // Builtin model aliases — luôn có sẵn
 const BUILTIN_MODELS: ModelInfo[] = [
-  { key: 'sonnet', label: 'Sonnet' },
-  { key: 'opus', label: 'Opus' },
-  { key: 'haiku', label: 'Haiku' },
+  { key: 'sonnet', label: 'Claude Sonnet (Nhanh & Thông minh)', shortLabel: 'Sonnet' },
+  { key: 'opus', label: 'Claude Opus (Mạnh nhất)', shortLabel: 'Opus' },
+  { key: 'haiku', label: 'Claude Haiku (Nhanh & Rẻ)', shortLabel: 'Haiku' },
 ];
 
 // ============================

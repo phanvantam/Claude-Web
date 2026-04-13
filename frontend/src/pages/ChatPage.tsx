@@ -1,19 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Popover, Spin, Badge, Tooltip, message } from 'antd';
+import { Spin, message } from 'antd';
 import {
-  FolderOutlined,
-  DeleteOutlined,
-  InfoCircleOutlined,
   LoadingOutlined,
-  RobotOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { projectsApi, configApi, claudeApi, sessionsApi } from '../services/api';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
 import InputBox from '../components/Chat/InputBox';
-import McpStatusPopover from '../components/Chat/McpStatusPopover';
+import ChatHeader from '../components/Chat/ChatHeader';
 import SubAgentDrawer from '../components/Chat/SubAgentDrawer';
 import SubAgentTimelineModal from '../components/Chat/SubAgentTimelineModal';
 import SkillDrawer from '../components/Chat/SkillDrawer';
@@ -25,6 +20,7 @@ const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [config, setConfig] = useState<GlobalConfig>({ model: '' });
+  const [modelOptions, setModelOptions] = useState<import('../services/api').ModelInfo[]>([]);
 
   // Sub-Agent UI state
   const [subAgentDrawerOpen, setSubAgentDrawerOpen] = useState(false);
@@ -136,6 +132,7 @@ const ChatPage: React.FC = () => {
     }).catch(() => {});
 
     claudeApi.getModels().then(data => {
+      setModelOptions(data.models);
       setConfig(prev => {
         const finalModel = sessionModel || prev.model || data.current;
         console.log(`[ChatPage] CLI models loaded. Current: "${prev.model}", CLI: "${data.current}", Next: "${finalModel}"`);
@@ -148,12 +145,11 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     if (!projectId || !project) return;
 
-    const isNew = searchParams.get('new') === 'true';
-    const desiredSessionId = isNew ? null : (querySessionId || project.activeSessionId || null);
-    
+    const desiredSessionId = querySessionId || null;
+
     if (sessionId === desiredSessionId && sessionId !== null) {
       switchingRef.current = false;
-      return; 
+      return;
     }
 
     const startKey = desiredSessionId || 'new';
@@ -164,14 +160,20 @@ const ChatPage: React.FC = () => {
       switchingRef.current = true;
       startSession(project.id, desiredSessionId || undefined);
     }
-  }, [projectId, querySessionId, project, startSession, sessionId, searchParams]);
+  }, [projectId, querySessionId, project, startSession, sessionId]);
 
   // Đồng bộ URL với sessionId thực tế — đảm bảo sidebar highlight đúng
-  // Chỉ chạy khi KHÔNG đang chuyển phiên, tránh redirect ngược về phiên cũ
   useEffect(() => {
     if (!projectId || !sessionId) return;
-    // Đang chuyển phiên → không navigate, để tránh redirect về phiên cũ
+
+    // Khi vừa tạo session mới từ /chat/:projectId, cho phép đồng bộ URL sang session vừa tạo
+    if (!querySessionId) {
+      switchingRef.current = false;
+    }
+
+    // Đang chuyển sang một session cụ thể khác → tạm thời chưa navigate
     if (switchingRef.current) return;
+
     if (querySessionId !== sessionId) {
       navigate(`/chat/${projectId}?sessionId=${sessionId}`, { replace: true });
     }
@@ -421,7 +423,18 @@ const ChatPage: React.FC = () => {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span style={{ color: 'rgba(255,255,255,0.45)' }}>Model</span>
-        <span style={{ fontFamily: 'monospace' }}>{sessionStats.model || '—'}</span>
+        <span style={{ fontFamily: 'monospace' }}>
+          {(() => {
+            const m = sessionStats.model;
+            const normalized = m?.replace(/\[.*\]/, '').trim();
+            const found = modelOptions.find(opt => 
+              opt.key === m || opt.key === normalized || 
+              opt.modelId === m || opt.modelId === normalized ||
+              (opt.modelId && m && (m.startsWith(opt.modelId) || opt.modelId.startsWith(m)))
+            );
+            return found?.label || m || '—';
+          })()}
+        </span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span style={{ color: 'rgba(255,255,255,0.45)' }}>Nỗ lực</span>
@@ -457,57 +470,19 @@ const ChatPage: React.FC = () => {
   return (
     <div className="chat-page">
       {/* Chat Header */}
-      <div className="chat-header">
-        <div className="chat-header-left" onClick={() => navigate('/')}>
-          <FolderOutlined style={{ color: 'var(--accent)', fontSize: 14, flexShrink: 0 }} />
-          <span className="chat-header-path" title={project?.path}>
-            {project?.path || 'Loading...'}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Nút Skills — quản lý custom slash commands */}
-          <Badge count={skillCount} size="small" offset={[-4, 4]} style={{ backgroundColor: '#e17055' }}>
-            <Tooltip title="Skills">
-              <Button
-                type="text"
-                icon={<ThunderboltOutlined />}
-                onClick={() => { setSkillDrawerOpen(true); fetchSkillCount(); }}
-                style={{ color: skillCount > 0 ? '#e17055' : 'rgba(255,255,255,0.4)' }}
-                size="small"
-              />
-            </Tooltip>
-          </Badge>
-          <McpStatusPopover projectId={project?.id} runtimeStatus={mcpRuntimeStatus} onRefreshMcp={refreshMcp} />
-          {/* Nút Sub Agents — badge hiện số lượng agent đã chạy */}
-          <Badge count={subAgents.length} size="small" offset={[-4, 4]} style={{ backgroundColor: 'var(--accent)' }}>
-            <Button
-              type="text"
-              icon={<RobotOutlined />}
-              onClick={handleOpenSubAgentDrawer}
-              style={{ color: subAgents.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}
-              size="small"
-              title="Sub Agents"
-            />
-          </Badge>
-          <Popover content={statsContent} trigger="click" placement="bottomRight">
-            <Button
-              type="text"
-              icon={<InfoCircleOutlined />}
-              style={{ color: 'rgba(255,255,255,0.4)' }}
-              size="small"
-            />
-          </Popover>
-          <Button
-            type="text"
-            icon={<DeleteOutlined />}
-            onClick={clearMessages}
-            style={{ color: 'rgba(255,255,255,0.4)' }}
-            title="Xóa tin nhắn"
-            size="small"
-          />
-        </div>
-      </div>
+      <ChatHeader
+        projectId={projectId}
+        project={project}
+        skillCount={skillCount}
+        onOpenSkillDrawer={() => { setSkillDrawerOpen(true); fetchSkillCount(); }}
+        mcpRuntimeStatus={mcpRuntimeStatus}
+        onRefreshMcp={refreshMcp}
+        subAgentCount={subAgents.length}
+        onOpenSubAgentDrawer={handleOpenSubAgentDrawer}
+        statsContent={statsContent}
+        onClearMessages={clearMessages}
+        onNavigateToProject={(id) => navigate(`/project/${id}`)}
+      />
 
       {/* Chat Messages */}
       <ChatWindow

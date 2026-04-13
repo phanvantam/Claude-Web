@@ -1,0 +1,90 @@
+/* ========================================
+   PAGE CONTAINER
+   ======================================== */
+.page-container {
+  padding: 24px 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+/* ========================================
+   BUTTONS
+   ======================================== */
+.primary-btn {
+  background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%) !important;
+  border: none !important;
+  font-weight: 500;
+  box-shadow: 0 2px 12px rgba(108, 92, 231, 0.4);
+  transition: all 0.3s ease;
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(108, 92, 231, 0.5) !important;
+}
+
+/* ========================================
+   CARDS
+   ======================================== */
+.glass-card {
+  background: var(--bg-card) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  transition: all 0.3s ease;
+}
+
+.stat-card {
+  background: var(--bg-card) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+}
+
+.stat-card .ant-statistic-title {
+  color: var(--text-secondary) !important;
+}
+
+.project-card {
+  background: var(--bg-card) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.project-card:hover {
+  border-color: var(--border-accent) !important;
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+}
+
+.project-card .ant-card-actions {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+.project-card .ant-card-actions>li {
+  border-right: 1px solid var(--border) !important;
+}
+
+.project-path {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

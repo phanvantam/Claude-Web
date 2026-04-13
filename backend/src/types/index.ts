@@ -127,6 +127,8 @@ export interface ChatSession {
   updatedAt: string;
   isActive: boolean;
   totalCost?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
   model?: string;
   effortLevel?: string;
   permissionMode?: string;
@@ -153,6 +155,8 @@ export interface ServerToClientEvents {
   'chat:stream:end': (data: { sessionId: string; messageId: string; finalMessage: ChatMessage }) => void;
   'chat:error': (data: { sessionId: string; error: string }) => void;
   'chat:status': (data: { sessionId: string; status: 'idle' | 'initializing' | 'thinking' | 'tool_use'; toolName?: string }) => void;
+  'permission:resolved': (data: { sessionId: string; allowed: boolean }) => void;
+  'askUser:resolved': (data: { sessionId: string; answer: string }) => void;
   'session:started': (data: { sessionId: string }) => void;
   'session:ended': (data: { sessionId: string }) => void;
 }

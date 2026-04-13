@@ -1,0 +1,495 @@
+/* ========================================
+   INPUT BOX
+   ======================================== */
+.input-box-wrapper {
+  padding: 6px 20px 8px;
+  background: rgba(10, 10, 15, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  isolation: isolate;
+}
+
+/* === Toolbar: model selector + thinking toggle === */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 6px;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.toolbar-btn-active {
+  color: var(--accent-light);
+  border-color: var(--border-accent);
+}
+
+.toolbar-btn-active:hover {
+  border-color: var(--accent);
+  background: rgba(108, 92, 231, 0.1);
+}
+
+
+
+/* === Main input box === */
+.input-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.15);
+}
+
+.chat-textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 24px;
+  max-height: 200px;
+  padding: 4px 0;
+}
+
+.chat-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.chat-textarea:disabled {
+  opacity: 0.5;
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.send-btn {
+  color: var(--accent) !important;
+  font-size: 18px !important;
+  transition: all 0.2s ease !important;
+}
+
+.send-btn:hover:not(:disabled) {
+  color: var(--accent-light) !important;
+  transform: scale(1.1);
+}
+
+.send-btn:disabled {
+  color: var(--text-muted) !important;
+}
+
+.abort-btn {
+  color: var(--danger) !important;
+  font-size: 18px !important;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* === Permission panel — expand dính phía trên input box === */
+.permission-panel {
+  background: rgba(22, 22, 38, 0.98);
+  border: 1px solid rgba(225, 112, 85, 0.25);
+  border-radius: 12px;
+  margin-bottom: 6px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(225, 112, 85, 0.08);
+  backdrop-filter: blur(16px);
+  animation: permissionSlideUp 0.25s ease-out;
+  overflow: hidden;
+}
+
+@keyframes permissionSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 400px;
+  }
+}
+
+.permission-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.permission-panel-icon {
+  color: #e17055;
+  font-size: 14px;
+}
+
+.permission-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #e17055;
+}
+
+.permission-panel-body {
+  padding: 10px 14px;
+}
+
+.permission-panel-desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 8px;
+}
+
+.permission-tool-help {
+  margin-left: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: help;
+  transition: color 0.2s ease;
+}
+
+.permission-tool-help:hover {
+  color: var(--accent-light);
+}
+
+.permission-panel-code {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.permission-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.permission-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.permission-btn-deny {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.permission-btn-deny:hover {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.permission-btn-allow {
+  background: rgba(108, 92, 231, 0.15);
+  color: var(--accent-light);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.permission-btn-allow:hover {
+  background: rgba(108, 92, 231, 0.25);
+  color: #fff;
+  border-color: rgba(108, 92, 231, 0.5);
+}
+
+.permission-btn-allow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === AskUserQuestion panel — câu hỏi tương tác từ Claude === */
+.ask-user-panel {
+  border-color: rgba(108, 92, 231, 0.3);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(108, 92, 231, 0.1);
+}
+
+.ask-user-panel .permission-panel-icon {
+  color: var(--accent);
+}
+
+.ask-user-panel .permission-panel-title {
+  color: var(--accent-light);
+}
+
+.ask-user-question-block {
+  padding: 10px 14px;
+}
+
+.ask-user-question-block+.ask-user-question-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ask-user-question-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 6px 0 10px;
+  line-height: 1.5;
+}
+
+/* Options mode — danh sách button chọn */
+.ask-user-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-user-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.ask-user-option-btn:hover {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+.ask-user-option-btn:active {
+  transform: scale(0.98);
+}
+
+.ask-user-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+}
+
+.ask-user-option-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+}
+
+/* Free text mode — textarea nhập tự do */
+.ask-user-text-input {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ask-user-textarea {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.ask-user-textarea:focus {
+  border-color: var(--accent);
+}
+
+.ask-user-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* === Slash command popup === */
+.slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 20px;
+  right: 20px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(22, 22, 38, 0.98);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  margin-bottom: 6px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  z-index: 9999;
+}
+
+.slash-menu-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 10px 6px;
+}
+
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.slash-item:hover,
+.slash-item.active {
+  background: rgba(108, 92, 231, 0.12);
+}
+
+.slash-cmd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.slash-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Agent desc: truncate 1 dòng — nội dung đầy đủ hiện qua icon ? */
+.slash-desc-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon ? hiện full agent description khi hover/tap */
+.agent-desc-help {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  padding-left: 6px;
+  transition: color 0.2s ease;
+}
+
+.agent-desc-help:hover {
+  color: var(--accent-light);
+}
+
+/* Tag nguồn gốc plugin */
+.slash-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* === Model dropdown menu items === */
+.model-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-menu-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.model-menu-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Icon dấu hỏi trong dropdown menu — căn phải, hover highlight */
+.menu-item-help {
+  margin-left: auto;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: help;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  padding-left: 8px;
+}
+
+.menu-item-help:hover {
+  color: var(--accent-light);
+}
+
