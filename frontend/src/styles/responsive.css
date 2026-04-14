@@ -54,6 +54,15 @@
     min-height: 36px;
   }
 
+  /* Ẩn nút desktop, hiện dropdown mobile */
+  .chat-header-actions-desktop {
+    display: none !important;
+  }
+
+  .chat-header-actions-mobile {
+    display: flex !important;
+  }
+
   .chat-header-left {
     max-width: 55%;
     padding: 3px 6px;

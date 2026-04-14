@@ -14,6 +14,8 @@ export interface ClaudeSessionState {
   sessionName?: string;
   /** AbortController cho query hiện tại — dùng để cancel */
   abortController?: AbortController;
+  /** SDK query instance — cần gọi interrupt() để thực sự dừng tiến trình CLI */
+  queryInstance?: { interrupt: () => Promise<void>; [key: string]: any };
   /** Pending permission request đang chờ user xác nhận */
   pendingPermission?: {
     toolName: string;

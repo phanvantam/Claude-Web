@@ -72,6 +72,46 @@
   min-width: 0;
 }
 
+/* Desktop: hiện đầy đủ từng nút — ẩn trên mobile */
+.chat-header-actions-desktop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Mobile: thu gọn — ẩn trên desktop */
+.chat-header-actions-mobile {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Dropdown mobile — dark theme phù hợp giao diện */
+.chat-header-mobile-dropdown .ant-dropdown-menu {
+  background: #1a1a2e !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px !important;
+  padding: 4px 0 !important;
+}
+
+.chat-header-mobile-dropdown .ant-dropdown-menu-item {
+  color: rgba(255, 255, 255, 0.75) !important;
+  padding: 10px 16px !important;
+  font-size: 13px !important;
+}
+
+.chat-header-mobile-dropdown .ant-dropdown-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.chat-header-mobile-dropdown .ant-dropdown-menu-item-danger {
+  color: #ff4d4f !important;
+}
+
+.chat-header-mobile-dropdown .ant-dropdown-menu-item-divider {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
 /* ========================================
    CHAT WINDOW
    ======================================== */

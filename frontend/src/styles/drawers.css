@@ -379,3 +379,210 @@
   margin-top: 12px;
 }
 
+/* ========================================
+   PLAN DRAWER — Danh sách kế hoạch
+   ======================================== */
+
+/* List item trong Drawer */
+.plan-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.plan-list-item:hover {
+  background: rgba(0, 184, 148, 0.06);
+  border-color: rgba(0, 184, 148, 0.2);
+  transform: translateX(2px);
+}
+
+.plan-list-item:active {
+  transform: translateX(0);
+}
+
+.plan-list-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(0, 184, 148, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00b894;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.plan-list-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-list-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-list-item-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ========================================
+   PLAN MODAL — Xem/Sửa/Thực thi kế hoạch
+   ======================================== */
+
+/* Dark theme cho modal */
+.plan-modal .ant-modal-content {
+  background: rgba(22, 22, 38, 0.98) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.plan-modal .ant-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.plan-modal .ant-modal-title {
+  color: var(--text-primary) !important;
+  font-size: 14px;
+}
+
+.plan-modal .ant-modal-close {
+  color: var(--text-muted) !important;
+}
+
+.plan-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Tên file input khi tạo mới */
+.plan-modal-filename {
+  margin-bottom: 4px;
+}
+
+.plan-filename-input .ant-input {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-primary) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+}
+
+.plan-filename-input .ant-input-group-addon {
+  background: rgba(0, 184, 148, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #00b894 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+}
+
+/* Tab styling */
+.plan-modal-tabs .ant-tabs-nav {
+  margin-bottom: 8px !important;
+}
+
+.plan-modal-tabs .ant-tabs-tab {
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.plan-modal-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #00b894 !important;
+}
+
+.plan-modal-tabs .ant-tabs-ink-bar {
+  background: #00b894 !important;
+}
+
+/* Preview content — giới hạn chiều cao và scroll */
+.plan-modal-content {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px 0;
+  line-height: 1.65;
+}
+
+.plan-modal-content img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+/* Execute section */
+.plan-modal-execute {
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.plan-modal-execute-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+/* Actions footer */
+.plan-modal-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Shared: plan editor textarea styling */
+.plan-preview {
+  padding: 4px 0;
+  line-height: 1.65;
+}
+
+.plan-preview img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.plan-editor-textarea textarea {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  color: var(--text-primary) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+.plan-editor-textarea textarea:focus {
+  border-color: rgba(0, 184, 148, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(0, 184, 148, 0.1) !important;
+}
+
+.plan-editor-textarea textarea::placeholder {
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+}
+
+/* Ẩn default list styling của Ant Design */
+.plan-modal .ant-list,
+.mcp-drawer .ant-list {
+  background: transparent !important;
+}
+
+.mcp-drawer .ant-list-item {
+  border: none !important;
+  padding: 0 !important;
+}

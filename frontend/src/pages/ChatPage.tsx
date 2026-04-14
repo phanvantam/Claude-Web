@@ -12,6 +12,7 @@ import ChatHeader from '../components/Chat/ChatHeader';
 import SubAgentDrawer from '../components/Chat/SubAgentDrawer';
 import SubAgentTimelineModal from '../components/Chat/SubAgentTimelineModal';
 import SkillDrawer from '../components/Chat/SkillDrawer';
+import PlanDrawer from '../components/Chat/PlanDrawer';
 import StatsPopoverContent from './ChatPage/StatsPopoverContent';
 import { useSlashCommands } from './ChatPage/useSlashCommands';
 import type { Project, GlobalConfig, SubAgentInfo } from '../types';
@@ -32,6 +33,7 @@ const ChatPage: React.FC = () => {
   const [timelineModalOpen, setTimelineModalOpen] = useState(false);
   const [skillDrawerOpen, setSkillDrawerOpen] = useState(false);
   const [skillCount, setSkillCount] = useState(0);
+  const [planDrawerOpen, setPlanDrawerOpen] = useState(false);
   
   const querySessionId = searchParams.get('sessionId');
 
@@ -333,6 +335,7 @@ const ChatPage: React.FC = () => {
         onOpenSubAgentDrawer={handleOpenSubAgentDrawer}
         statsContent={statsContent}
         onClearMessages={clearMessages}
+        onOpenPlanDrawer={() => setPlanDrawerOpen(true)}
         onNavigateToProject={(id) => navigate(`/project/${id}`)}
       />
 
@@ -401,6 +404,14 @@ const ChatPage: React.FC = () => {
         open={skillDrawerOpen}
         onClose={() => { setSkillDrawerOpen(false); fetchSkillCount(); }}
         projectId={project?.id}
+      />
+
+      {/* Plan Drawer — danh sách kế hoạch và thực thi */}
+      <PlanDrawer
+        open={planDrawerOpen}
+        onClose={() => setPlanDrawerOpen(false)}
+        projectId={project?.id}
+        onExecute={handleSend}
       />
     </div>
   );

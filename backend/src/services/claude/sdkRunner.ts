@@ -129,7 +129,41 @@ export async function runSDKQuery(
       });
     }
 
-    // Mode không phải 'default' → auto allow cho các tool thông thường
+    // Plan mode → cho phép tool đọc, chặn tool ghi/thực thi.
+    // Ngoại lệ: cho phép ghi vào .claude/plans/ để lưu kế hoạch.
+    // SDK validate bằng Zod: canUseTool PHẢI trả { behavior, updatedInput|message },
+    // KHÔNG chấp nhận undefined.
+    if (config.permissionMode === 'plan') {
+      // Whitelist tool chỉ đọc — an toàn cho phân tích codebase
+      const isReadOnly = /^(Read|View|Cat|LS|List|Search|Grep|Glob|Find|Notebook|ExitPlan)/i.test(toolName)
+        || toolName === 'ListCodeDefinitionNames'
+        || toolName === 'ListNotebooks';
+
+      if (isReadOnly) {
+        logger.info(`[Claude][${sessionId}] Plan mode: cho phép tool đọc ${toolName}`);
+        return { behavior: 'allow' as const, updatedInput: input };
+      }
+
+      // Cho phép ghi file vào .claude/plans/ — nơi lưu kế hoạch
+      const isWriteToPlan = (toolName === 'Edit' || toolName === 'Write' || toolName === 'MultiEdit')
+        && typeof input === 'object'
+        && typeof (input as any).file_path === 'string'
+        && (input as any).file_path.includes('.claude/plans/');
+
+      if (isWriteToPlan) {
+        logger.info(`[Claude][${sessionId}] Plan mode: cho phép ghi plan file ${(input as any).file_path}`);
+        return { behavior: 'allow' as const, updatedInput: input };
+      }
+
+      logger.info(`[Claude][${sessionId}] Plan mode: chặn tool ${toolName}`);
+      return {
+        behavior: 'deny' as const,
+        message: 'Chế độ lập kế hoạch: chỉ được phân tích, đọc code và ghi kế hoạch vào .claude/plans/. Không được sửa file source hay chạy lệnh.',
+      };
+    }
+
+
+    // Các mode non-default khác (bypassPermissions, acceptEdits, dontAsk) → auto allow
     if (!isDefaultMode) {
       return { behavior: 'allow' as const, updatedInput: input };
     }
@@ -155,15 +189,38 @@ export async function runSDKQuery(
 
   // ── SDK-level options (thay cho extraArgs CLI) ──
   if (config.effortLevel) options.effort = config.effortLevel;
+
   // systemPrompt: KHÔNG ghi đè preset claude_code — luôn giữ hành vi gốc.
-  // Nếu config.systemPrompt được truyền, nối thêm (append) vào sau preset.
+  // Nối thêm (append) chỉ thị bổ sung dựa theo context.
+  const appendParts: string[] = [];
+
+  // Chỉ thị cho plan mode — ép Claude ghi kế hoạch vào đúng thư mục
+  if (config.permissionMode === 'plan') {
+    appendParts.push(
+      `[PLAN MODE INSTRUCTIONS]`,
+      `Bạn đang ở chế độ lập kế hoạch. Các quy tắc bắt buộc:`,
+      `1. Phân tích codebase bằng các công cụ đọc (Read, Glob, Grep, List).`,
+      `2. Viết kế hoạch chi tiết dưới dạng Markdown.`,
+      `3. Lưu file kế hoạch vào thư mục .claude/plans/ tại gốc project.`,
+      `4. Tên file phải mô tả nội dung, ví dụ: refactor-auth-module.md, fix-payment-bug.md`,
+      `5. KHÔNG được sửa bất kỳ file source code nào. Chỉ được TẠO/GHI file trong .claude/plans/`,
+      `6. Kế hoạch phải bao gồm: Mục tiêu, Phân tích hiện trạng, Các bước thực hiện, và Rủi ro.`,
+    );
+  }
+
+  // Nối config.systemPrompt nếu có
   if (config.systemPrompt) {
+    appendParts.push(config.systemPrompt);
+  }
+
+  if (appendParts.length > 0) {
     options.systemPrompt = {
       type: 'preset',
       preset: 'claude_code',
-      append: config.systemPrompt,
+      append: appendParts.join('\n'),
     };
   }
+
 
   // SDK tự quản lý giới hạn vòng đời — không cần watchdog timer cứng.
   // maxTurns: ngăn vòng lặp vô tận → SDK trả error_max_turns.
@@ -282,6 +339,9 @@ export async function runSDKQuery(
       // Đưa pathToClaudeCodeExecutable ra ngoài cấp root của object cấu hình
       pathToClaudeCodeExecutable: utils.getClaudeBinary()
     });
+
+    // Lưu query instance vào state — abortSession sẽ gọi interrupt() để kill CLI process
+    state.queryInstance = queryInstance;
 
     // Restore stream timeout env sau khi query bắt đầu (Query constructor đã bắt giá trị)
     if (prevStreamTimeout !== undefined) {
@@ -591,6 +651,7 @@ export async function runSDKQuery(
     if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
     clearInterval(saveInterval);
     state.abortController = undefined;
+    state.queryInstance = undefined;
     state.pendingPermission = undefined;
     clearPartialTurnInState();
     if (state.isProcessing) {

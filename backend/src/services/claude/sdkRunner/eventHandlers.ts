@@ -7,8 +7,12 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { ChatMessage, ToolCall, ContentBlock } from '../../../types';
 import { updateSession, getSession } from '../../session';
+import { getProject } from '../../project';
 import { logger } from '../../logger';
 import { ClaudeSessionState } from '../types';
 import { QueryProcessor } from '../processor';
@@ -272,6 +276,19 @@ export function handleResultEvent(
     logger.warn(`[Claude][${sessionId}] Permission denials:`, result.permission_denials);
   }
 
+  // Plan mode: tự động copy file plan từ ~/.claude/plans/ vào project directory
+  // Claude CLI lưu plan ở vị trí global — cần đưa về project để PlanDrawer hiển thị được.
+  if (state.permissionMode === 'plan') {
+    try {
+      const project = getProject(state.projectId);
+      if (project?.path) {
+        copyLatestPlanToProject(sessionId, project.path);
+      }
+    } catch (err) {
+      logger.warn(`[Claude][${sessionId}] Failed to copy plan to project:`, err);
+    }
+  }
+
   state.isProcessing = false;
   state.pendingPermission = undefined;
   state.activeToolName = undefined;
@@ -285,4 +302,46 @@ export function handleResultEvent(
   try {
     if (queryInstance) queryInstance.interrupt();
   } catch { /* ignore — stream có thể đã kết thúc */ }
+}
+
+/**
+ * Copy file plan mới nhất từ ~/.claude/plans/ vào thư mục project.
+ * Claude CLI lưu plan ở vị trí global (ví dụ: validated-baking-micali.md).
+ * Hàm này tìm file .md mới nhất (theo mtime) và copy thành IMPLEMENTATION_PLAN.md.
+ */
+function copyLatestPlanToProject(sessionId: string, projectPath: string): void {
+  const plansDir = path.join(os.homedir(), '.claude', 'plans');
+  if (!fs.existsSync(plansDir)) {
+    logger.debug(`[Claude][${sessionId}] ~/.claude/plans/ không tồn tại, bỏ qua copy plan`);
+    return;
+  }
+
+  // Tìm file .md mới nhất trong ~/.claude/plans/
+  const files = fs.readdirSync(plansDir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => {
+      const fullPath = path.join(plansDir, f);
+      const stat = fs.statSync(fullPath);
+      return { name: f, path: fullPath, mtime: stat.mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime); // Mới nhất trước
+
+  if (files.length === 0) {
+    logger.debug(`[Claude][${sessionId}] Không tìm thấy file plan nào trong ~/.claude/plans/`);
+    return;
+  }
+
+  const latestPlan = files[0];
+  // Chỉ copy nếu file được tạo/sửa trong vòng 5 phút gần nhất
+  // (tránh copy file plan cũ không liên quan đến lần chạy hiện tại)
+  const AGE_LIMIT_MS = 5 * 60 * 1000;
+  if (Date.now() - latestPlan.mtime > AGE_LIMIT_MS) {
+    logger.debug(`[Claude][${sessionId}] Plan file ${latestPlan.name} quá cũ (${Math.round((Date.now() - latestPlan.mtime) / 1000)}s), bỏ qua`);
+    return;
+  }
+
+  const content = fs.readFileSync(latestPlan.path, 'utf-8');
+  const targetPath = path.join(projectPath, 'IMPLEMENTATION_PLAN.md');
+  fs.writeFileSync(targetPath, content, 'utf-8');
+  logger.info(`[Claude][${sessionId}] Đã copy plan ${latestPlan.name} → ${targetPath}`);
 }

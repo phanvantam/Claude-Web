@@ -200,3 +200,42 @@ export const claudeApi = {
     );
   },
 };
+
+// Plan API — đọc/ghi/liệt kê file kế hoạch từ .claude/plans/
+export interface PlanData {
+  found: boolean;
+  filename?: string;
+  filepath?: string;
+  content?: string;
+}
+
+/** Thông tin file plan trong danh sách */
+export interface PlanFileInfo {
+  filename: string;
+  updatedAt: string;
+  sizeBytes: number;
+}
+
+export const planApi = {
+  /** Liệt kê tất cả file plan trong .claude/plans/ */
+  list: (projectId: string) =>
+    fetchJSON<{ plans: PlanFileInfo[]; plansDir: string }>(`/plan/list?projectId=${encodeURIComponent(projectId)}`),
+  /** Đọc nội dung file plan cụ thể */
+  get: (projectId: string, filename?: string) => {
+    const params = new URLSearchParams({ projectId });
+    if (filename) params.set('filename', filename);
+    return fetchJSON<PlanData>(`/plan?${params.toString()}`);
+  },
+  /** Ghi nội dung plan — tạo mới hoặc cập nhật */
+  save: (projectId: string, content: string, filename?: string) =>
+    fetchJSON<{ success: boolean; filename: string; filepath: string }>('/plan', {
+      method: 'PUT',
+      body: JSON.stringify({ projectId, content, filename }),
+    }),
+  /** Xóa file plan */
+  delete: (projectId: string, filename: string) =>
+    fetchJSON<{ success: boolean }>(`/plan?projectId=${encodeURIComponent(projectId)}&filename=${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    }),
+};
+

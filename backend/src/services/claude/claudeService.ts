@@ -143,13 +143,31 @@ export class ClaudeService extends EventEmitter {
       try { updateSession(sessionId, { effortLevel: state.effortLevel }); } catch { }
     }
 
+    // Khi ở plan mode → bổ sung instruction lưu kế hoạch vào thư mục dự án
+    // Claude CLI mặc định lưu plan ở ~/.claude/plans/ — không hữu ích cho user.
+    // Instruction này yêu cầu Claude viết trực tiếp vào file trong project.
+    let effectiveSystemPrompt = config.systemPrompt;
+    if (effectivePermission === 'plan') {
+      const planInstruction = [
+        '\n\n[PLAN MODE INSTRUCTION]',
+        'Bạn đang ở chế độ lập kế hoạch. Nhiệm vụ:',
+        '1. Phân tích yêu cầu và codebase hiện tại.',
+        '2. Lập kế hoạch chi tiết các bước thực hiện.',
+        '3. PHẢI lưu kế hoạch vào file IMPLEMENTATION_PLAN.md tại thư mục gốc của dự án.',
+        '4. KHÔNG được thực thi code, KHÔNG sửa file code — chỉ viết kế hoạch.',
+        '5. File kế hoạch nên dùng Markdown, có heading rõ ràng, danh sách bước, rủi ro, và ước lượng.',
+        '[END PLAN MODE INSTRUCTION]',
+      ].join('\n');
+      effectiveSystemPrompt = (effectiveSystemPrompt || '') + planInstruction;
+    }
+
     // Delegate sang sdkRunner — async, không block
     runSDKQuery(sessionId, message, {
       cwd: project!.path,
       model: effectiveModel,
       effortLevel: effectiveEffort,
       permissionMode: effectivePermission,
-      systemPrompt: config.systemPrompt,
+      systemPrompt: effectiveSystemPrompt,
       maxBudgetUsd: config.maxBudgetUsd,
       customArgs: config.customArgs,
     }, state, this).catch((err) => {
@@ -301,7 +319,19 @@ export class ClaudeService extends EventEmitter {
 
   abortSession(sessionId: string): void {
     const state = this.sessions.get(sessionId);
-    if (state?.abortController) {
+    if (!state) return;
+
+    // Gọi interrupt() trên SDK query instance — đây mới thực sự kill CLI process.
+    // AbortController chỉ signal cho canUseTool/pending permission, không dừng được tiến trình.
+    if (state.queryInstance) {
+      state.queryInstance.interrupt().catch((err: any) => {
+        // Lỗi "Query closed" là bình thường khi query đã kết thúc
+        if (!err?.message?.includes('Query closed')) {
+          logger.warn(`[Claude][${sessionId}] interrupt() failed:`, err);
+        }
+      });
+    }
+    if (state.abortController) {
       state.abortController.abort();
       state.abortController = undefined;
     }
@@ -310,6 +340,10 @@ export class ClaudeService extends EventEmitter {
   stopSession(sessionId: string): void {
     const state = this.sessions.get(sessionId);
     if (state) {
+      // Dừng tiến trình CLI trước khi xóa session khỏi memory
+      if (state.queryInstance) {
+        state.queryInstance.interrupt().catch(() => {});
+      }
       if (state.abortController) state.abortController.abort();
       this.sessions.delete(sessionId);
       this.emit('session:ended', { sessionId });

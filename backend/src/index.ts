@@ -8,6 +8,7 @@ import projectRoutes from './routes/projects';
 import configRoutes from './routes/config';
 import sessionRoutes from './routes/sessions';
 import claudeMetaRoutes from './routes/claude-meta';
+import planRoutes from './routes/plan';
 import { claudeService } from './services/claude';
 import { logger } from './services/logger';
 import { registerSocketHandlers } from './socket/handlers';
@@ -52,6 +53,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/claude', claudeMetaRoutes);
+app.use('/api/plan', planRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
