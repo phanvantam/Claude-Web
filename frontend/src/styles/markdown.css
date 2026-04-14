@@ -5,6 +5,14 @@
   line-height: 1.7;
 }
 
+/* Streaming text: plain text với pre-wrap — tránh markdown parse lỗi khi chưa hoàn chỉnh */
+.markdown-body.streaming-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
 .markdown-body p {
   margin-bottom: 2px;
 }

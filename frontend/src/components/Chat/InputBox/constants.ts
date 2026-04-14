@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import React, { ReactNode } from 'react';
+import { WarningFilled } from '@ant-design/icons';
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Write: 'Ghi nội dung vào file. Tạo mới hoặc ghi đè file hiện có.',
@@ -78,7 +79,12 @@ export const PERMISSION_HELP: Record<string, HelpInfo> = {
   },
   bypassPermissions: {
     title: 'Bỏ qua tất cả quyền',
-    desc: '⚠️ Không hỏi bất kỳ quyền nào. Claude tự do thực thi mọi tool. Chỉ dùng khi bạn hoàn toàn tin tưởng.',
+    desc: (
+      <span>
+        <WarningFilled style={{ color: '#faad14', marginRight: 4 }} />
+        Không hỏi bất kỳ quyền nào. Claude tự do thực thi mọi tool. Chỉ dùng khi bạn hoàn toàn tin tưởng.
+      </span>
+    ),
   },
   plan: {
     title: 'Chỉ lập kế hoạch',

@@ -147,6 +147,24 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     }
   });
 
+  // Đồng bộ toàn bộ blocks hiện tại — backend emit sau khi tool_result xử lý xong.
+  // Thay thế streamingBlocks để tool card chuyển từ "loading" → "hoàn thành" tức thì.
+  socket.on('chat:stream:blocks', (data: {
+    sessionId: string;
+    blocks: import('../../types').ContentBlock[];
+  }) => {
+    if (data.sessionId !== sessionIdRef.current) return;
+    setStreamingBlocks(data.blocks);
+
+    // Đồng bộ streamingRef với text block cuối — tránh text bị append sai
+    // khi chat:stream event tiếp theo đến sau stream:blocks
+    const lastTextBlock = [...data.blocks].reverse().find(b => b.type === 'text');
+    if (lastTextBlock && lastTextBlock.type === 'text') {
+      streamingRef.current = lastTextBlock.text;
+      setStreamingContent(lastTextBlock.text);
+    }
+  });
+
   return [
     'chat:stream',
     'chat:stream:tool',
@@ -154,5 +172,6 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     'chat:stream:block_start',
     'chat:stream:block_delta',
     'chat:stream:block_stop',
+    'chat:stream:blocks',
   ];
 }

@@ -21,6 +21,10 @@ interface PlanModalProps {
   onExecute: (text: string) => void;
   /** Callback sau khi lưu/xóa thành công — PlanDrawer sẽ refresh danh sách */
   onChanged: () => void;
+  /** Permission mode hiện tại của session */
+  permissionMode?: string;
+  /** Callback thay đổi permission mode — tự động chuyển khi thực thi */
+  onPermissionModeChange?: (mode: string) => void;
 }
 
 /**
@@ -36,6 +40,8 @@ const PlanModal: React.FC<PlanModalProps> = ({
   filename,
   onExecute,
   onChanged,
+  permissionMode,
+  onPermissionModeChange,
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,17 +140,31 @@ const PlanModal: React.FC<PlanModalProps> = ({
       return;
     }
 
-    // Xây dựng prompt thực thi — Claude sẽ đọc file và bắt đầu chạy
-    let executePrompt = `Đọc và thực thi kế hoạch trong file .claude/plans/${planFilename}. Hãy thực hiện từng bước theo đúng thứ tự trong kế hoạch.`;
-
-    if (additionalInstructions.trim()) {
-      executePrompt += `\n\nChỉ thị bổ sung:\n${additionalInstructions.trim()}`;
+    // Tự động chuyển từ chế độ "Kế hoạch" sang "Chấp nhận sửa" để Claude có quyền thực thi
+    if (permissionMode === 'plan' && onPermissionModeChange) {
+      onPermissionModeChange('acceptEdits');
+      message.info('Đã chuyển sang chế độ "Chấp nhận sửa" để thực thi kế hoạch');
     }
 
-    onExecute(executePrompt);
+    // Xây dựng prompt thực thi chi tiết — Claude sẽ đọc file và báo cáo tiến độ
+    const promptLines = [
+      `Đọc và thực thi kế hoạch trong file .claude/plans/${planFilename}.`,
+      '',
+      'Yêu cầu:',
+      '1. Đọc kỹ toàn bộ nội dung file kế hoạch trước khi bắt đầu.',
+      '2. Thực hiện từng bước theo đúng thứ tự.',
+      '3. Sau mỗi bước, báo cáo ngắn gọn: [DONE] Bước X: [mô tả] — Hoàn thành.',
+      '4. Nếu gặp vấn đề ở bước nào, dừng lại và thông báo trước khi tiếp tục.',
+    ];
+
+    if (additionalInstructions.trim()) {
+      promptLines.push('', 'Chỉ thị bổ sung:', additionalInstructions.trim());
+    }
+
+    onExecute(promptLines.join('\n'));
     onClose();
     message.info('Đã gửi lệnh thực thi kế hoạch');
-  }, [filename, newFilename, additionalInstructions, onExecute, onClose]);
+  }, [filename, newFilename, additionalInstructions, onExecute, onClose, permissionMode, onPermissionModeChange]);
 
   const title = isNew ? 'Tạo kế hoạch mới' : filename;
 

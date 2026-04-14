@@ -31,6 +31,12 @@ export function registerClaudeEventForwarders(io: Server): void {
     io.to(data.sessionId).emit('chat:stream:block_stop', data);
   });
 
+  // Đồng bộ toàn bộ blocks hiện tại — emit sau khi tool_result xử lý xong
+  // để frontend cập nhật trạng thái tool card tức thì.
+  claudeService.on('stream:blocks', (data) => {
+    io.to(data.sessionId).emit('chat:stream:blocks', data);
+  });
+
   claudeService.on('status', (data) => {
     if (data.status === 'idle' || data.status === 'initializing') {
       logger.info(`[EventForward] chat:status ${data.status} → session ${data.sessionId}`);

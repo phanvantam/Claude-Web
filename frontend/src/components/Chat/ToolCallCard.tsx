@@ -212,8 +212,8 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
   const isTodoWrite = toolCall.name === 'TodoWrite';
   const isAgentTool = toolCall.name === 'Agent' || toolCall.name === 'Task';
 
-  // TodoWrite, Agent, hoặc đang streaming: mặc định mở — user muốn thấy nội dung ngay
-  const [expanded, setExpanded] = useState(isTodoWrite || isAgentTool || isStreaming);
+  // Mặc định đóng — bao gồm cả khi đang streaming
+  const [expanded, setExpanded] = useState(false);
   const summary = getToolSummary(toolCall);
 
   return (

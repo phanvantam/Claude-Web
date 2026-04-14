@@ -143,23 +143,7 @@ export class ClaudeService extends EventEmitter {
       try { updateSession(sessionId, { effortLevel: state.effortLevel }); } catch { }
     }
 
-    // Khi ở plan mode → bổ sung instruction lưu kế hoạch vào thư mục dự án
-    // Claude CLI mặc định lưu plan ở ~/.claude/plans/ — không hữu ích cho user.
-    // Instruction này yêu cầu Claude viết trực tiếp vào file trong project.
-    let effectiveSystemPrompt = config.systemPrompt;
-    if (effectivePermission === 'plan') {
-      const planInstruction = [
-        '\n\n[PLAN MODE INSTRUCTION]',
-        'Bạn đang ở chế độ lập kế hoạch. Nhiệm vụ:',
-        '1. Phân tích yêu cầu và codebase hiện tại.',
-        '2. Lập kế hoạch chi tiết các bước thực hiện.',
-        '3. PHẢI lưu kế hoạch vào file IMPLEMENTATION_PLAN.md tại thư mục gốc của dự án.',
-        '4. KHÔNG được thực thi code, KHÔNG sửa file code — chỉ viết kế hoạch.',
-        '5. File kế hoạch nên dùng Markdown, có heading rõ ràng, danh sách bước, rủi ro, và ước lượng.',
-        '[END PLAN MODE INSTRUCTION]',
-      ].join('\n');
-      effectiveSystemPrompt = (effectiveSystemPrompt || '') + planInstruction;
-    }
+    const effectiveSystemPrompt = config.systemPrompt;
 
     // Delegate sang sdkRunner — async, không block
     runSDKQuery(sessionId, message, {

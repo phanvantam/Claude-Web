@@ -15,13 +15,17 @@ interface PlanDrawerProps {
   projectId?: string;
   /** Callback gửi tin nhắn thực thi vào phiên chat hiện tại */
   onExecute?: (text: string) => void;
+  /** Permission mode hiện tại của session — truyền xuống PlanModal */
+  permissionMode?: string;
+  /** Callback thay đổi permission mode — dùng khi tự động chuyển mode lúc thực thi */
+  onPermissionModeChange?: (mode: string) => void;
 }
 
 /**
  * Drawer hiển thị danh sách file kế hoạch trong .claude/plans/.
  * Click vào item → mở PlanModal để xem/sửa/thực thi.
  */
-const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExecute }) => {
+const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExecute, permissionMode, onPermissionModeChange }) => {
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<PlanFileInfo[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -216,6 +220,8 @@ const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExe
         filename={selectedFilename}
         onExecute={handleExecute}
         onChanged={handlePlanChanged}
+        permissionMode={permissionMode}
+        onPermissionModeChange={onPermissionModeChange}
       />
     </>
   );

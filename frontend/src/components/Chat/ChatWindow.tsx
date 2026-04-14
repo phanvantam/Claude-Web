@@ -68,6 +68,37 @@ const LiveTimer: React.FC<{ isActive: boolean; startedAt?: number | null }> = Re
 });
 
 /**
+ * Block timeline có thể đóng/mở — dùng cho thinking, subagent_result, v.v.
+ * Mặc định đóng (chỉ hiện header label). Click header để toggle nội dung.
+ */
+const CollapsibleBlock: React.FC<{
+  dot: { className: string; icon: React.ReactNode };
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ dot, label, defaultOpen = false, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="tl-block-row">
+      <div className={dot.className}>{dot.icon}</div>
+      <div className="tl-block-content tl-thinking-block">
+        <div
+          className="tl-collapsible-header"
+          onClick={() => setOpen(!open)}
+        >
+          <span className="tl-collapsible-label">{label}</span>
+          <span className="tl-collapsible-toggle">
+            {open ? <CaretDownOutlined /> : <CaretRightOutlined />}
+          </span>
+        </div>
+        {open && <div className="tl-collapsible-body">{children}</div>}
+      </div>
+    </div>
+  );
+};
+
+/**
  * Card hiển thị kết quả sub-agent trên timeline chính.
  * - Header: tên agent + trạng thái (thành công/lỗi) + toggle mở/đóng
  * - Collapsible: danh sách tool calls nội bộ (activities)
@@ -209,6 +240,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Lưu vị trí scroll trước khi prepend messages cũ
   const prevScrollHeightRef = useRef<number>(0);
   const shouldRestoreScrollRef = useRef(false);
+  // Guard: chỉ cho phép load thêm khi user thực sự cuộn lên, không phải do auto-scroll
+  const userScrolledRef = useRef(false);
+  const loadCooldownRef = useRef(false);
 
   // Cuộn xuống cuối khi có message mới (không cuộn khi đang load cũ)
   useEffect(() => {
@@ -217,6 +251,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [messages, streamingContent, streamingBlocks]);
 
+  // Reset scroll guard khi messages thay đổi lần đầu (session mới)
+  useEffect(() => {
+    // Sau khi render messages ban đầu, cho phép scroll-load sau 1s
+    const timer = setTimeout(() => {
+      userScrolledRef.current = true;
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []); // chỉ chạy 1 lần khi mount
+
   // Khôi phục vị trí scroll sau khi prepend messages cũ
   useEffect(() => {
     if (shouldRestoreScrollRef.current && containerRef.current) {
@@ -224,15 +267,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const addedHeight = newScrollHeight - prevScrollHeightRef.current;
       containerRef.current.scrollTop = addedHeight;
       shouldRestoreScrollRef.current = false;
+      // Cooldown sau load — tránh trigger liên tiếp
+      loadCooldownRef.current = true;
+      setTimeout(() => { loadCooldownRef.current = false; }, 500);
     }
   }, [messages]);
 
   /**
    * Phát hiện scroll lên đầu để tải thêm messages cũ.
-   * Kích hoạt khi scrollTop < 100px.
+   * Kích hoạt khi scrollTop < 100px VÀ user đã thực sự cuộn (không phải auto-scroll ban đầu).
    */
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !hasMoreMessages || isLoadingMore || !onLoadMore) return;
+    // Chặn load tự động khi vừa khởi tạo hoặc vừa load xong trang trước
+    if (!userScrolledRef.current || loadCooldownRef.current) return;
 
     if (containerRef.current.scrollTop < 100) {
       // Lưu scrollHeight trước khi prepend
@@ -320,12 +368,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
           if (block.type === 'thinking') {
             return (
-              <div key={`block-${i}`} className="tl-block-row">
-                <div className={dot.className}>{dot.icon}</div>
-                <div className="tl-block-content tl-thinking-block">
-                  <div className="thinking-text">{block.thinking}</div>
-                </div>
-              </div>
+              <CollapsibleBlock
+                key={`block-${i}`}
+                dot={dot}
+                label="Suy luận"
+                defaultOpen={false}
+              >
+                <div className="thinking-text">{block.thinking}</div>
+              </CollapsibleBlock>
             );
           }
 
@@ -353,8 +403,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className="tl-block-content">
                 {block.type === 'text' ? (
                   <>
-                    <MessageContent content={block.text} />
-                    {isStreaming && isLast && <span className="cursor-blink">▊</span>}
+                    {/* Streaming text: dùng plain text để tránh markdown parse lỗi khi chưa hoàn chỉnh */}
+                    {isStreaming && isLast ? (
+                      <div className="markdown-body streaming-text">{block.text}<span className="cursor-blink">▊</span></div>
+                    ) : (
+                      <MessageContent content={block.text} />
+                    )}
                   </>
                 ) : (
                   <ToolCallCard

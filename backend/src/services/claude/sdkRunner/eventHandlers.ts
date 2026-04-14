@@ -177,6 +177,15 @@ export function handleAssistantEvent(
     } else if (block.type === 'tool_result') {
       processor.handleToolResult(block, ctx, parentToolUseId);
       syncPartialTurnToState();
+      // Emit blocks ngay sau khi tool_result được xử lý — giúp frontend
+      // cập nhật trạng thái tool card (loading → hoàn thành) tức thì,
+      // không cần đợi message finalize hay assistant turn tiếp theo.
+      if (!isInsideSubAgent) {
+        emitter.emit('stream:blocks', {
+          sessionId,
+          blocks: ctx.turnBlocks,
+        });
+      }
     } else {
       logger.debug(`[Claude][${sessionId}] Unhandled block type: ${block.type}`);
     }
@@ -205,9 +214,7 @@ export function handleResultEvent(
   const durationMs = result.duration_ms || 0;
   const usage = result.usage;
 
-  // Cộng dồn chi phí vào sessions.total_cost — mỗi lượt chat cộng thêm costUsd.
-  // Lý do cộng dồn thay vì ghi đè: result.total_cost_usd là chi phí của LỰC LƯỢT hiện tại,
-  // không phải tổng tích lũy toàn session.
+  // Cộng dồn chi phí vào sessions.total_cost
   if (costUsd > 0) {
     try {
       const existing = getSession(sessionId);
@@ -246,14 +253,35 @@ export function handleResultEvent(
     logger.info(`[Claude][${sessionId}] Finalized: ${ctx.turnBlocks.length} blocks, ${ctx.turnToolCalls.length} tools`);
   }
 
-  // System messages cho error / completion
-  // SDK tự phát error_max_turns và error_max_budget_usd khi vượt giới hạn
-  if (result.is_error || result.subtype === 'error_max_turns' || result.subtype === 'error_max_budget_usd' || result.subtype === 'error_during_execution') {
-    const errorDetail = result.result || result.message || JSON.stringify(result);
+  // Phân tích xem có phải là lỗi do người dùng chủ động dừng (Stop) hay không
+  const isAbort = result.terminal_reason === 'aborted_streaming' ||
+    (Array.isArray(result.errors) && result.errors.some((e: any) => String(e).includes('Request was aborted')));
+
+  // System messages cho error / completion / abort
+  if (isAbort) {
+    // Trường hợp người dùng chủ động nhấn Dừng
+    const abortMsg: ChatMessage = {
+      id: `result-${Date.now()}`,
+      role: 'system',
+      content: 'Đã dừng theo yêu cầu của người dùng.',
+      timestamp: new Date().toISOString(),
+    };
+    state.messages.push(abortMsg);
+    persistMessage(sessionId, abortMsg);
+    emitter.emit('result', { sessionId, result: abortMsg, data: result });
+  } else if (result.is_error || result.subtype === 'error_max_turns' || result.subtype === 'error_max_budget_usd' || result.subtype === 'error_during_execution') {
+    // Lấy thông tin lỗi chi tiết hơn, tránh JSON.stringify thô nếu có thể
+    let errorDetail = result.result || result.message;
+    if (!errorDetail && Array.isArray(result.errors) && result.errors.length > 0) {
+      // Ưu tiên dòng đầu tiên của errors (thường là summary)
+      errorDetail = String(result.errors[0]).split('\n')[0];
+    }
+    if (!errorDetail) errorDetail = result.subtype || 'Unknown execution error';
+
     const errorMsg: ChatMessage = {
       id: `result-${Date.now()}`,
       role: 'system',
-      content: `Error: ${errorDetail}`,
+      content: `Lỗi: ${errorDetail}`,
       timestamp: new Date().toISOString(),
     };
     state.messages.push(errorMsg);
@@ -263,7 +291,7 @@ export function handleResultEvent(
     const finalMsg: ChatMessage = {
       id: `result-${Date.now()}`,
       role: 'system',
-      content: `Completed: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`,
+      content: `Hoàn thành: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`,
       timestamp: new Date().toISOString(),
       cost: costUsd,
     };
@@ -305,22 +333,22 @@ export function handleResultEvent(
 }
 
 /**
- * Copy file plan mới nhất từ ~/.claude/plans/ vào thư mục project.
- * Claude CLI lưu plan ở vị trí global (ví dụ: validated-baking-micali.md).
- * Hàm này tìm file .md mới nhất (theo mtime) và copy thành IMPLEMENTATION_PLAN.md.
+ * Copy file plan mới nhất từ ~/.claude/plans/ vào thư mục .claude/plans/ CỦA PROJECT.
+ * Safety net: nếu Claude CLI vẫn ghi vào global, hàm này đưa về đúng chỗ.
+ * Giữ nguyên tên file gốc (thay vì đổi thành IMPLEMENTATION_PLAN.md).
  */
 function copyLatestPlanToProject(sessionId: string, projectPath: string): void {
-  const plansDir = path.join(os.homedir(), '.claude', 'plans');
-  if (!fs.existsSync(plansDir)) {
+  const globalPlansDir = path.join(os.homedir(), '.claude', 'plans');
+  if (!fs.existsSync(globalPlansDir)) {
     logger.debug(`[Claude][${sessionId}] ~/.claude/plans/ không tồn tại, bỏ qua copy plan`);
     return;
   }
 
   // Tìm file .md mới nhất trong ~/.claude/plans/
-  const files = fs.readdirSync(plansDir)
+  const files = fs.readdirSync(globalPlansDir)
     .filter(f => f.endsWith('.md'))
     .map(f => {
-      const fullPath = path.join(plansDir, f);
+      const fullPath = path.join(globalPlansDir, f);
       const stat = fs.statSync(fullPath);
       return { name: f, path: fullPath, mtime: stat.mtimeMs };
     })
@@ -340,8 +368,19 @@ function copyLatestPlanToProject(sessionId: string, projectPath: string): void {
     return;
   }
 
+  // Copy vào .claude/plans/ của project — giữ nguyên tên file gốc
+  const projectPlansDir = path.join(projectPath, '.claude', 'plans');
+  if (!fs.existsSync(projectPlansDir)) {
+    fs.mkdirSync(projectPlansDir, { recursive: true });
+  }
   const content = fs.readFileSync(latestPlan.path, 'utf-8');
-  const targetPath = path.join(projectPath, 'IMPLEMENTATION_PLAN.md');
-  fs.writeFileSync(targetPath, content, 'utf-8');
-  logger.info(`[Claude][${sessionId}] Đã copy plan ${latestPlan.name} → ${targetPath}`);
+  const targetPath = path.join(projectPlansDir, latestPlan.name);
+
+  // Chỉ copy nếu file chưa tồn tại trong project (tránh ghi đè file đã có)
+  if (!fs.existsSync(targetPath)) {
+    fs.writeFileSync(targetPath, content, 'utf-8');
+    logger.info(`[Claude][${sessionId}] Đã copy plan từ global → project: ${latestPlan.name} → ${targetPath}`);
+  } else {
+    logger.debug(`[Claude][${sessionId}] Plan ${latestPlan.name} đã tồn tại trong project, bỏ qua copy`);
+  }
 }

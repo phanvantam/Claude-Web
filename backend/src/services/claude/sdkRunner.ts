@@ -94,21 +94,43 @@ export async function runSDKQuery(
   if (config.model) options.model = config.model;
 
   // ── Permission mode ──
-  // canUseTool LUÔN được set để intercept AskUserQuestion (cần UI tương tác bất kể mode).
-  // Các tool khác: mode 'default' → hỏi user, mode khác → auto allow.
-  const isDefaultMode = !config.permissionMode || config.permissionMode === 'default';
+  // Phân loại tool theo mức rủi ro, kết hợp với permissionMode để quyết định
+  // cho phép / hỏi / chặn. AskUserQuestion luôn hiển thị UI bất kể mode.
   options.permissionMode = config.permissionMode || 'default';
+
+  /**
+   * Phân loại mức độ rủi ro của tool.
+   * - LOW:    chỉ đọc dữ liệu, an toàn tuyệt đối
+   * - MEDIUM: ghi/sửa/xóa file — ảnh hưởng codebase nhưng có thể revert
+   * - HIGH:   thực thi lệnh hệ thống hoặc tool bên ngoài (MCP) — không thể kiểm soát
+   */
+  type ToolRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+  const getToolRiskLevel = (tool: string): ToolRiskLevel => {
+    // LOW: Tool chỉ đọc — an toàn cho mọi mode
+    if (/^(Read|View|Cat|LS|List|Search|Grep|Glob|Find|Notebook|ExitPlan)/i.test(tool)
+      || tool === 'ListCodeDefinitionNames'
+      || tool === 'ListNotebooks') {
+      return 'LOW';
+    }
+    // MEDIUM: Tool ghi/sửa file
+    if (/^(Write|Edit|MultiEdit|Move|Rename|Delete|Mkdir|Append|Create)/i.test(tool)) {
+      return 'MEDIUM';
+    }
+    // HIGH: Bash, MCP tools, và mọi tool không xác định
+    return 'HIGH';
+  };
 
   options.canUseTool = async (
     toolName: string,
     input: Record<string, unknown>,
     { signal }: { signal: AbortSignal },
   ) => {
-    logger.info(`[Claude][${sessionId}] canUseTool called for: ${toolName}`);
+    const riskLevel = getToolRiskLevel(toolName);
+    logger.info(`[Claude][${sessionId}] canUseTool: ${toolName} (risk=${riskLevel}, mode=${options.permissionMode})`);
     state.activeToolName = toolName;
     emitter.emit('status', { sessionId, status: 'tool_use', toolName });
 
-    // AskUserQuestion — LUÔN chờ user trả lời, bất kể permission mode
+    // ── AskUserQuestion — LUÔN chờ user trả lời, bất kể permission mode ──
     if (toolName === 'AskUserQuestion') {
       logger.info(`[Claude][${sessionId}] AskUserQuestion detected, emitting askUser:question`);
       return new Promise<any>((resolve) => {
@@ -129,46 +151,47 @@ export async function runSDKQuery(
       });
     }
 
-    // Plan mode → cho phép tool đọc, chặn tool ghi/thực thi.
-    // Ngoại lệ: cho phép ghi vào .claude/plans/ để lưu kế hoạch.
-    // SDK validate bằng Zod: canUseTool PHẢI trả { behavior, updatedInput|message },
-    // KHÔNG chấp nhận undefined.
-    if (config.permissionMode === 'plan') {
-      // Whitelist tool chỉ đọc — an toàn cho phân tích codebase
-      const isReadOnly = /^(Read|View|Cat|LS|List|Search|Grep|Glob|Find|Notebook|ExitPlan)/i.test(toolName)
-        || toolName === 'ListCodeDefinitionNames'
-        || toolName === 'ListNotebooks';
-
-      if (isReadOnly) {
-        logger.info(`[Claude][${sessionId}] Plan mode: cho phép tool đọc ${toolName}`);
+    // ── Plan mode: cho phép đọc, chặn ghi/thực thi (trừ file plan) ──
+    if (options.permissionMode === 'plan') {
+      if (riskLevel === 'LOW') {
         return { behavior: 'allow' as const, updatedInput: input };
       }
-
-      // Cho phép ghi file vào .claude/plans/ — nơi lưu kế hoạch
-      const isWriteToPlan = (toolName === 'Edit' || toolName === 'Write' || toolName === 'MultiEdit')
-        && typeof input === 'object'
-        && typeof (input as any).file_path === 'string'
-        && (input as any).file_path.includes('.claude/plans/');
-
+      // Ngoại lệ: cho phép ghi file vào thư mục plans của PROJECT (không phải global ~/.claude/plans/)
+      const filePath = typeof (input as any).file_path === 'string' ? (input as any).file_path : '';
+      const projectPlansDir = `${config.cwd}/.claude/plans/`;
+      const isWriteToPlan = /^(Edit|Write|MultiEdit|Create)/i.test(toolName)
+        && (filePath.includes(projectPlansDir) || filePath.startsWith('.claude/plans/'));
       if (isWriteToPlan) {
+        // Nếu Claude dùng relative path → chuyển thành absolute path trong project
+        if (!filePath.startsWith('/') && filePath.startsWith('.claude/plans/')) {
+          (input as any).file_path = `${config.cwd}/${filePath}`;
+          logger.info(`[Claude][${sessionId}] Plan mode: rewrite relative → absolute: ${(input as any).file_path}`);
+        }
         logger.info(`[Claude][${sessionId}] Plan mode: cho phép ghi plan file ${(input as any).file_path}`);
         return { behavior: 'allow' as const, updatedInput: input };
       }
-
       logger.info(`[Claude][${sessionId}] Plan mode: chặn tool ${toolName}`);
       return {
         behavior: 'deny' as const,
-        message: 'Chế độ lập kế hoạch: chỉ được phân tích, đọc code và ghi kế hoạch vào .claude/plans/. Không được sửa file source hay chạy lệnh.',
+        message: `Chế độ lập kế hoạch: chỉ được phân tích, đọc code và ghi kế hoạch vào ${projectPlansDir}. Không được sửa file source hay chạy lệnh.`,
       };
     }
 
-
-    // Các mode non-default khác (bypassPermissions, acceptEdits, dontAsk) → auto allow
-    if (!isDefaultMode) {
+    // ── bypassPermissions: cho phép mọi thứ ──
+    if (options.permissionMode === 'bypassPermissions') {
       return { behavior: 'allow' as const, updatedInput: input };
     }
 
-    // Mode 'default' → hỏi user xác nhận qua WebSocket
+    // ── acceptEdits / auto: cho phép LOW + MEDIUM, hỏi HIGH ──
+    if (options.permissionMode === 'acceptEdits' || options.permissionMode === 'auto') {
+      if (riskLevel === 'LOW' || riskLevel === 'MEDIUM') {
+        return { behavior: 'allow' as const, updatedInput: input };
+      }
+      // HIGH risk → rơi xuống logic hỏi user bên dưới
+      logger.info(`[Claude][${sessionId}] ${options.permissionMode} mode: tool ${toolName} là HIGH risk, hỏi user`);
+    }
+
+    // ── default + HIGH risk từ acceptEdits/auto → hỏi user xác nhận qua WebSocket ──
     return new Promise<any>((resolve) => {
       if (signal.aborted) {
         return resolve({ behavior: 'deny', message: 'Đã hủy.' });
@@ -194,16 +217,19 @@ export async function runSDKQuery(
   // Nối thêm (append) chỉ thị bổ sung dựa theo context.
   const appendParts: string[] = [];
 
-  // Chỉ thị cho plan mode — ép Claude ghi kế hoạch vào đúng thư mục
+  // Chỉ thị cho plan mode — ép Claude ghi kế hoạch vào đúng thư mục PROJECT (absolute path)
+  // QUAN TRỌNG: dùng absolute path để tránh CLI resolve sang ~/.claude/plans/ (global)
   if (config.permissionMode === 'plan') {
+    const projectPlansDir = `${config.cwd}/.claude/plans`;
     appendParts.push(
       `[PLAN MODE INSTRUCTIONS]`,
       `Bạn đang ở chế độ lập kế hoạch. Các quy tắc bắt buộc:`,
       `1. Phân tích codebase bằng các công cụ đọc (Read, Glob, Grep, List).`,
       `2. Viết kế hoạch chi tiết dưới dạng Markdown.`,
-      `3. Lưu file kế hoạch vào thư mục .claude/plans/ tại gốc project.`,
+      `3. PHẢI lưu file kế hoạch vào thư mục: ${projectPlansDir}/`,
+      `   TUYỆT ĐỐI KHÔNG lưu vào ~/.claude/plans/ hay bất kỳ thư mục global nào.`,
       `4. Tên file phải mô tả nội dung, ví dụ: refactor-auth-module.md, fix-payment-bug.md`,
-      `5. KHÔNG được sửa bất kỳ file source code nào. Chỉ được TẠO/GHI file trong .claude/plans/`,
+      `5. KHÔNG được sửa bất kỳ file source code nào. Chỉ được TẠO/GHI file trong ${projectPlansDir}/`,
       `6. Kế hoạch phải bao gồm: Mục tiêu, Phân tích hiện trạng, Các bước thực hiện, và Rủi ro.`,
     );
   }
@@ -221,6 +247,10 @@ export async function runSDKQuery(
     };
   }
 
+  logger.info(`[sdkRunner] SDK Session Options: sessionId=${sessionId}, model=${options.model}, systemPromptAppendLength=${(options.systemPrompt as any).append?.length || 0}`);
+  if ((options.systemPrompt as any).append) {
+    logger.debug(`[sdkRunner] System Prompt Append: ${(options.systemPrompt as any).append}`);
+  }
 
   // SDK tự quản lý giới hạn vòng đời — không cần watchdog timer cứng.
   // maxTurns: ngăn vòng lặp vô tận → SDK trả error_max_turns.
@@ -590,6 +620,16 @@ export async function runSDKQuery(
             for (const b of blocks) {
               if (b.type === 'tool_result') processor.handleToolResult(b, ctx, uParentId);
             }
+            // Emit stream:blocks sau khi tool_result xử lý — giúp frontend
+            // cập nhật trạng thái tool card tức thì (loading → hoàn thành).
+            // Trước đây chỉ assistant event mới emit → tool status bị delay.
+            if (!uParentId) {
+              syncPartialTurnToState();
+              emitter.emit('stream:blocks', {
+                sessionId,
+                blocks: ctx.turnBlocks,
+              });
+            }
           }
           break;
         }
@@ -641,7 +681,7 @@ export async function runSDKQuery(
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] for-await loop finished naturally`);
   } catch (err: any) {
     // Phân biệt abort error (user chủ động) vs runtime error
-    if (err.name === 'AbortError' || abortController.signal.aborted) {
+    if (err.name === 'AbortError' || abortController.signal.aborted || err.message?.includes('Request was aborted')) {
       logger.info(`[Claude] Query aborted for ${sessionId}`);
     } else {
       throw err;

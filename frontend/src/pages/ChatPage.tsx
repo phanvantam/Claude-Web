@@ -4,7 +4,7 @@ import { Spin, message } from 'antd';
 import {
   LoadingOutlined,
 } from '@ant-design/icons';
-import { projectsApi, configApi, claudeApi, sessionsApi } from '../services/api';
+import { projectsApi, configApi, claudeApi, sessionsApi, planApi } from '../services/api';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
 import InputBox from '../components/Chat/InputBox';
@@ -34,6 +34,7 @@ const ChatPage: React.FC = () => {
   const [skillDrawerOpen, setSkillDrawerOpen] = useState(false);
   const [skillCount, setSkillCount] = useState(0);
   const [planDrawerOpen, setPlanDrawerOpen] = useState(false);
+  const [planCount, setPlanCount] = useState(0);
   
   const querySessionId = searchParams.get('sessionId');
 
@@ -121,9 +122,20 @@ const ChatPage: React.FC = () => {
     }).catch(() => {});
   }, [project?.id]);
 
+  // Fetch số lượng plan files — hiển thị badge trên nút Kế hoạch
+  const fetchPlanCount = useCallback(() => {
+    if (!project?.id) return;
+    planApi.list(project.id).then(data => {
+      setPlanCount(data.plans?.length || 0);
+    }).catch(() => {});
+  }, [project?.id]);
+
   useEffect(() => {
-    if (project?.id) fetchSkillCount();
-  }, [project?.id, fetchSkillCount]);
+    if (project?.id) {
+      fetchSkillCount();
+      fetchPlanCount();
+    }
+  }, [project?.id, fetchSkillCount, fetchPlanCount]);
 
   // 3. Tải config mặc định (chỉ chạy khi mount hoặc projectId đổi)
   useEffect(() => {
@@ -335,7 +347,8 @@ const ChatPage: React.FC = () => {
         onOpenSubAgentDrawer={handleOpenSubAgentDrawer}
         statsContent={statsContent}
         onClearMessages={clearMessages}
-        onOpenPlanDrawer={() => setPlanDrawerOpen(true)}
+        planCount={planCount}
+        onOpenPlanDrawer={() => { setPlanDrawerOpen(true); fetchPlanCount(); }}
         onNavigateToProject={(id) => navigate(`/project/${id}`)}
       />
 
@@ -409,9 +422,11 @@ const ChatPage: React.FC = () => {
       {/* Plan Drawer — danh sách kế hoạch và thực thi */}
       <PlanDrawer
         open={planDrawerOpen}
-        onClose={() => setPlanDrawerOpen(false)}
+        onClose={() => { setPlanDrawerOpen(false); fetchPlanCount(); }}
         projectId={project?.id}
         onExecute={handleSend}
+        permissionMode={sessionPermissionMode}
+        onPermissionModeChange={setSessionPermissionMode}
       />
     </div>
   );

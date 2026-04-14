@@ -26,6 +26,7 @@ interface ChatHeaderProps {
   onOpenSubAgentDrawer: () => void;
   statsContent: React.ReactNode;
   onClearMessages: () => void;
+  planCount: number;
   onOpenPlanDrawer: () => void;
   onNavigateToProject: (projectId?: string) => void;
 }
@@ -45,6 +46,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   onOpenSubAgentDrawer,
   statsContent,
   onClearMessages,
+  planCount,
   onOpenPlanDrawer,
   onNavigateToProject,
 }) => {
@@ -73,8 +75,8 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
     },
     {
       key: 'plan',
-      icon: <FileTextOutlined style={{ color: '#00b894' }} />,
-      label: 'Kế hoạch',
+      icon: <FileTextOutlined style={{ color: planCount > 0 ? '#00b894' : undefined }} />,
+      label: `Kế hoạch${planCount > 0 ? ` (${planCount})` : ''}`,
       onClick: onOpenPlanDrawer,
     },
     { type: 'divider' },
@@ -88,7 +90,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   ];
 
   // Tổng badge count để hiện trên nút More (cho user biết có item active)
-  const totalBadgeCount = skillCount + subAgentCount + mcpConnectedCount;
+  const totalBadgeCount = skillCount + subAgentCount + mcpConnectedCount + planCount;
 
   return (
     <div className="chat-header">
@@ -126,15 +128,17 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           />
         </Badge>
 
-        <Tooltip title="Kế hoạch">
-          <Button
-            type="text"
-            icon={<FileTextOutlined />}
-            onClick={onOpenPlanDrawer}
-            style={{ color: 'rgba(255,255,255,0.4)' }}
-            size="small"
-          />
-        </Tooltip>
+        <Badge count={planCount} size="small" offset={[-4, 4]} style={{ backgroundColor: '#00b894' }}>
+          <Tooltip title="Kế hoạch">
+            <Button
+              type="text"
+              icon={<FileTextOutlined />}
+              onClick={onOpenPlanDrawer}
+              style={{ color: planCount > 0 ? '#00b894' : 'rgba(255,255,255,0.4)' }}
+              size="small"
+            />
+          </Tooltip>
+        </Badge>
 
         <Popover content={statsContent} trigger="click" placement="bottomRight">
           <Button
