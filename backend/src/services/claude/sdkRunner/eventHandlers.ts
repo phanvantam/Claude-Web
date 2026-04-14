@@ -177,10 +177,11 @@ export function handleAssistantEvent(
     } else if (block.type === 'tool_result') {
       processor.handleToolResult(block, ctx, parentToolUseId);
       syncPartialTurnToState();
-      // Emit blocks ngay sau khi tool_result được xử lý — giúp frontend
-      // cập nhật trạng thái tool card (loading → hoàn thành) tức thì,
-      // không cần đợi message finalize hay assistant turn tiếp theo.
+      // Tool đã hoàn thành → xóa activeToolName để Dynamic Watchdog
+      // chuyển về timeout ngắn (10s). Nếu không xóa, watchdog sẽ bị
+      // "lừa" rằng tool vẫn đang chạy và giữ timeout dài (10 phút).
       if (!isInsideSubAgent) {
+        state.activeToolName = undefined;
         emitter.emit('stream:blocks', {
           sessionId,
           blocks: ctx.turnBlocks,

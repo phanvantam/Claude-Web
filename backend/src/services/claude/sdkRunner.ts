@@ -269,8 +269,9 @@ export async function runSDKQuery(
   options.includePartialMessages = true;
 
   // claude-agent-sdk: set stream-close timeout qua env (SDK vẫn đọc env var này)
+  // Giảm từ 300s → 30s để ép SDK đóng pipe nhanh hơn trên Linux khi stream bị stall.
   const prevStreamTimeout = process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
-  process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = '300000';
+  process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = '30000';
 
   // Periodic save mỗi 5s — lưu messages vào DB để refresh không mất
   const saveInterval = setInterval(() => {
@@ -286,28 +287,46 @@ export async function runSDKQuery(
     }
   }, 5000);
 
-  // ── Safety net duy nhất: Global timeout 10 phút ──
-  // SDK đã tự quản lý vòng đời (maxTurns, maxBudgetUsd, internal retry ~10min).
-  // Timer này CHỈ bắt trường hợp CLI crash/zombie thực sự — không can thiệp vào
-  // quá trình suy luận sâu (effort: high) hoặc sub-agent đang chạy.
-  // Dữ liệu tham khảo:
-  //   - SDK internal stream timeout: ~10 phút (GitHub Issue #533)
-  //   - CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: 300s (5 phút, đã set ở trên)
-  //   - agentProgressSummaries: heartbeat mỗi ~30s từ sub-agent
+  // ── Dynamic Watchdog: Timeout thích ứng theo ngữ cảnh ──
+  // Thay vì dùng 1 con số timeout cứng, watchdog phân biệt 2 trạng thái:
+  //   1. Model đang sinh text/thinking (không có tool chạy): timeout NGẮN (10s)
+  //      → Phát hiện SSE Stall trên Linux cực nhanh.
+  //   2. Tool đang thực thi (Bash, Read file lớn...): timeout DÀI (10 phút)
+  //      → Tôn trọng thời gian chạy hợp lệ.
+  //   3. Pending permission / Sub-agent: bỏ qua timer, chờ user phản hồi.
   let safetyTimer: ReturnType<typeof setTimeout> | null = null;
   let queryInstance: any = null;
-  const GLOBAL_SAFETY_TIMEOUT_MS = 600_000; // 10 phút
+  const STREAM_IDLE_TIMEOUT_MS = 300_000;    // 300 giây (5 phút) — model im lặng = treo
+  const TOOL_EXEC_TIMEOUT_MS = 600_000;      // 10 phút — tool chạy lâu hợp lệ
 
   const resetSafetyTimer = () => {
     if (safetyTimer) clearTimeout(safetyTimer);
+
+    // Xác định timeout phù hợp dựa trên trạng thái hiện tại
+    const isToolRunning = !!state.activeToolName;
+    const isSubAgentRunning = !!state.activeSubAgent;
+    const isPendingPermission = !!state.pendingPermission;
+
+    // Khi đang chờ permission hoặc sub-agent → dùng timeout dài
+    // Khi tool đang chạy → dùng timeout dài (tool Bash có thể mất vài phút)
+    // Khi model đang nói/nghĩ → dùng timeout ngắn (10s)
+    const timeoutMs = (isPendingPermission || isToolRunning || isSubAgentRunning)
+      ? TOOL_EXEC_TIMEOUT_MS
+      : STREAM_IDLE_TIMEOUT_MS;
+
     safetyTimer = setTimeout(async () => {
-      // Skip nếu đang chờ user approve permission hoặc trả lời câu hỏi
+      // Double-check: tại thời điểm timeout fire, có thể trạng thái đã thay đổi
       if (state.pendingPermission) {
-        logger.debug(`[Claude][${sessionId}] Safety timer skipped — pending permission`);
+        logger.debug(`[Claude][${sessionId}] Watchdog skipped — pending permission`);
         resetSafetyTimer();
         return;
       }
-      logger.warn(`[Claude][${sessionId}] Global safety timeout (${GLOBAL_SAFETY_TIMEOUT_MS / 1000}s) — CLI có thể đã crash, force interrupting`);
+
+      const reason = isToolRunning
+        ? `Tool '${state.activeToolName}' chạy quá ${TOOL_EXEC_TIMEOUT_MS / 1000}s`
+        : `Không nhận được dữ liệu sau ${STREAM_IDLE_TIMEOUT_MS / 1000}s (SSE Stall?)`;
+      logger.warn(`[Claude][${sessionId}] Dynamic Watchdog triggered: ${reason}`);
+
       try {
         if (queryInstance) await queryInstance.interrupt();
       } catch (e: any) {
@@ -317,7 +336,7 @@ export async function runSDKQuery(
           logger.warn(`[Claude][${sessionId}] interrupt() failed:`, e);
         }
       }
-    }, GLOBAL_SAFETY_TIMEOUT_MS);
+    }, timeoutMs);
   };
   resetSafetyTimer();
 
