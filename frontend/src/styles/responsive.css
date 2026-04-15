@@ -48,10 +48,15 @@
     min-height: calc(100vh - 48px);
   }
 
-  /* ── Chat header — thu gọn ── */
+  /* ── Chat header — thu gọn và cố định ── */
   .chat-header {
     padding: 6px 10px;
     min-height: 36px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(10, 10, 15, 0.95);
+    backdrop-filter: blur(8px);
   }
 
   /* Ẩn nút desktop, hiện dropdown mobile */
@@ -151,9 +156,14 @@
     padding: 3px 0 2px 2px;
   }
 
-  /* ── Input box wrapper — mỏng hơn ── */
+  /* ── Input box wrapper — mỏng hơn và cố định ở dưới ── */
   .input-box-wrapper {
     padding: 4px 8px 6px;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: rgba(10, 10, 15, 0.95);
+    backdrop-filter: blur(8px);
   }
 
   /* ── Toolbar — cuộn ngang nếu nhiều nút ── */

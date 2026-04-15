@@ -5,6 +5,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import { projectsApi, configApi, claudeApi, sessionsApi, planApi } from '../services/api';
+import type { PlanExecutionStatus } from '../services/api';
 import { socketService } from '../services/socket';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
@@ -36,6 +37,8 @@ const ChatPage: React.FC = () => {
   const [skillCount, setSkillCount] = useState(0);
   const [planDrawerOpen, setPlanDrawerOpen] = useState(false);
   const [planCount, setPlanCount] = useState(0);
+  /** Tên plan đang được thực thi — dùng để cập nhật thành completed khi turn kết thúc */
+  const [executingPlanFilename, setExecutingPlanFilename] = useState<string | null>(null);
   
   const querySessionId = searchParams.get('sessionId');
 
@@ -132,6 +135,27 @@ const ChatPage: React.FC = () => {
       setPlanCount(data.plans?.length || 0);
     }).catch(() => {});
   }, [project?.id]);
+
+  /** Callback khi PlanModal bắt đầu thực thi */
+  const handleExecutionStarted = useCallback((filename: string) => {
+    setExecutingPlanFilename(filename);
+    fetchPlanCount();
+  }, [fetchPlanCount]);
+
+  /**
+   * Khi status chuyển từ trạng thái xử lý về idle, nếu đang có plan chạy
+   * thì đánh dấu plan đó là completed.
+   */
+  const prevStatusRef2 = useRef(status);
+  useEffect(() => {
+    if (prevStatusRef2.current !== 'idle' && status === 'idle' && executingPlanFilename && project?.id) {
+      planApi.updateStatus(project.id, executingPlanFilename, 'completed')
+        .then(() => fetchPlanCount())
+        .catch(() => {})
+        .finally(() => setExecutingPlanFilename(null));
+    }
+    prevStatusRef2.current = status;
+  }, [status, executingPlanFilename, project?.id, fetchPlanCount]);
 
   useEffect(() => {
     if (project?.id) {
@@ -431,6 +455,7 @@ const ChatPage: React.FC = () => {
         onClose={() => { setPlanDrawerOpen(false); fetchPlanCount(); }}
         projectId={project?.id}
         onExecute={handleSend}
+        onExecutionStarted={handleExecutionStarted}
         permissionMode={sessionPermissionMode}
         onPermissionModeChange={setSessionPermissionMode}
       />

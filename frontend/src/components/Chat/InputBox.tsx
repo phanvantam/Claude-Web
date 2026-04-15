@@ -130,26 +130,30 @@ const InputBox: React.FC<InputBoxProps> = ({
     a.name.toLowerCase().includes(agentFilter.toLowerCase())
   );
 
-  /** Chèn @agent-name vào input — replace text sau '@' */
+  /** Chèn @agent-name vào input — replace text sau '@' hoặc nối thêm nếu không có @ */
   const insertAgent = useCallback((name: string) => {
-    setValue(prev => prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `));
+    setValue(prev => {
+      const match = prev.match(/@[a-zA-Z0-9_-]*$/);
+      if (match) {
+        // Đang gõ @... ở cuối → replace
+        return prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `);
+      } else {
+        // Không có @ ở cuối (bấm nút Agent) → nối thêm
+        const spacer = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : '';
+        return prev + spacer + `@${name} `;
+      }
+    });
     setShowAgentMenu(false);
     setAgentFilter('');
     textareaRef.current?.focus();
   }, []);
 
-  /**
-   * Chọn agent từ nút toolbar — chèn @name vào cuối input.
-   * Nếu đang gõ dở @... ở cuối thì thay thế, ngược lại nối thêm.
-   */
-  const handleSelectAgentBtn = useCallback((name: string) => {
-    setValue(prev => {
-      const match = prev.match(/@[a-zA-Z0-9_-]*$/);
-      if (match) return prev.replace(/@[a-zA-Z0-9_-]*$/, `@${name} `);
-      // Nối thêm — thêm dấu cách nếu cần
-      const spacer = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : '';
-      return prev + spacer + `@${name} `;
-    });
+  /** Mobile/Desktop: nút Agent mở cùng picker như khi gõ @ */
+  const handleOpenAgentPicker = useCallback(() => {
+    setShowSlashMenu(false);
+    setShowAgentMenu(true);
+    setAgentFilter('');
+    setAgentIndex(0);
     textareaRef.current?.focus();
   }, []);
 
@@ -268,19 +272,6 @@ const InputBox: React.FC<InputBoxProps> = ({
       active?.scrollIntoView({ block: 'nearest' });
     }
   }, [slashIndex, showSlashMenu, agentIndex, showAgentMenu]);
-
-  /** Menu chọn agent — dùng cho nút toolbar Agent */
-  const agentMenuItemsForToolbar: MenuProps['items'] = agents.length > 0
-    ? agents.map(a => ({
-      key: a.name,
-      label: (
-        <div className="model-menu-item">
-          <span className="model-menu-name">@{a.name}</span>
-          {a.description && <span className="model-menu-desc">{a.description}</span>}
-        </div>
-      ),
-    }))
-    : [{ key: '__empty__', label: <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>Không có agent nào</span>, disabled: true }];
 
   /** Menu chọn model — kèm icon dấu hỏi mô tả từng model */
   const modelMenuItems: MenuProps['items'] = models.map(m => {
@@ -541,25 +532,15 @@ const InputBox: React.FC<InputBoxProps> = ({
           </button>
         </Dropdown>
 
-        {/* Nút chọn Agent — dropdown danh sách agents, chèn @name vào textarea */}
-        <Dropdown
-          menu={{
-            items: agentMenuItemsForToolbar,
-            onClick: ({ key }) => { if (key !== '__empty__') handleSelectAgentBtn(key); },
-          }}
-          trigger={['click']}
-          placement="topLeft"
-          overlayClassName="toolbar-dropdown"
-          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
+        {/* Nút chọn Agent — mở cùng popup như @mention trên mọi thiết bị */}
+        <button
+          className={`toolbar-btn${agents.length > 0 ? ' toolbar-btn-active' : ''}`}
+          title="Giao việc cho Sub-Agent"
+          onClick={handleOpenAgentPicker}
         >
-          <button
-            className={`toolbar-btn${agents.length > 0 ? ' toolbar-btn-active' : ''}`}
-            title="Giao việc cho Sub-Agent"
-          >
-            <TeamOutlined />
-            <span>Agent{agents.length > 0 ? ` (${agents.length})` : ''}</span>
-          </button>
-        </Dropdown>
+          <TeamOutlined />
+          <span>Agent{agents.length > 0 ? ` (${agents.length})` : ''}</span>
+        </button>
 
         <Dropdown
           menu={{

@@ -224,6 +224,13 @@ process.on('uncaughtException', (err: any) => {
     logger.warn('[Process] ProcessTransport not ready (interrupt after close) — ignoring...');
     return;
   }
+  // Khi chủ động interrupt stream, SDK có thể ném ede_diagnostic + Request was aborted.
+  // Đây là kết quả expected của luồng dừng, không phải crash thực sự.
+  const errMessage = String(err?.message || err || '');
+  if (errMessage.includes('Claude Code returned an error result: [ede_diagnostic]') && errMessage.includes('Request was aborted')) {
+    logger.warn('[Process] SDK ede_diagnostic after interrupt — expected, ignoring...');
+    return;
+  }
   logger.error('[Process] Uncaught Exception:', err);
 });
 

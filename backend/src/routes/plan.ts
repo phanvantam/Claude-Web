@@ -6,6 +6,76 @@ import { logger } from '../services/logger';
 
 const router = Router();
 
+// ============================================================================
+// Helpers — plan frontmatter
+// ============================================================================
+
+type ExecutionStatus = 'not_executed' | 'in_progress' | 'completed';
+
+/**
+ * Đọc executionStatus từ frontmatter của một plan file.
+ * Mặc định là 'not_executed' nếu file chưa có frontmatter.
+ */
+function readPlanExecutionStatus(filePath: string): ExecutionStatus {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!match) return 'not_executed';
+    const lines = match[1].split('\n');
+    for (const line of lines) {
+      const kv = line.match(/^executionStatus:\s*(.*)$/);
+      if (kv) {
+        const val = kv[1].trim();
+        if (val === 'in_progress' || val === 'completed') return val;
+        return 'not_executed';
+      }
+    }
+    return 'not_executed';
+  } catch {
+    return 'not_executed';
+  }
+}
+
+/**
+ * Đọc toàn bộ frontmatter từ content string, trả về raw YAML.
+ * Trả về '' nếu không có frontmatter.
+ */
+function getFrontmatterRaw(content: string): string {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  return match ? match[1] : '';
+}
+
+/**
+ * Cập nhật hoặc thêm executionStatus vào frontmatter của content string.
+ */
+function setExecutionStatusInContent(
+  content: string,
+  status: ExecutionStatus,
+): string {
+  const frontmatterMatch = content.match(/^(---\s*\n)([\s\S]*?)(\n---)/);
+  if (!frontmatterMatch) {
+    // Chưa có frontmatter — chèn vào đầu file
+    return `---\nexecutionStatus: ${status}\n---\n\n${content}`;
+  }
+  const [, open, body, close] = frontmatterMatch;
+  // Thay thế hoặc thêm executionStatus
+  const lines = body.split('\n');
+  let found = false;
+  const newLines = lines.map(line => {
+    if (line.startsWith('executionStatus:')) {
+      found = true;
+      return `executionStatus: ${status}`;
+    }
+    return line;
+  });
+  if (!found) {
+    newLines.push(`executionStatus: ${status}`);
+  }
+  // Rebuild frontmatter + phần còn lại (sau ---)
+  const afterFrontmatter = content.slice(frontmatterMatch[0].length);
+  return `${open}${newLines.join('\n')}${close}${afterFrontmatter}`;
+}
+
 /**
  * Lấy đường dẫn thư mục plans của project.
  * Luôn là <projectPath>/.claude/plans/
@@ -53,6 +123,7 @@ router.get('/list', (req, res) => {
           filename,
           updatedAt: stat.mtime.toISOString(),
           sizeBytes: stat.size,
+          executionStatus: readPlanExecutionStatus(fullPath),
         };
       })
       // Sắp xếp mới nhất lên đầu
@@ -129,6 +200,7 @@ router.get('/', (req, res) => {
  * Ghi nội dung file plan vào .claude/plans/.
  * Body: { projectId, content, filename? }
  * Nếu không truyền filename, dùng tên mặc định IMPLEMENTATION_PLAN.md.
+ * Preserve executionStatus trong frontmatter nếu file đã tồn tại.
  */
 router.put('/', (req, res) => {
   try {
@@ -147,7 +219,17 @@ router.put('/', (req, res) => {
     const safeName = path.basename(filename || 'IMPLEMENTATION_PLAN.md');
     const planPath = path.join(plansDir, safeName);
 
-    fs.writeFileSync(planPath, content, 'utf-8');
+    // Nếu file đã tồn tại, preserve executionStatus hiện tại
+    let finalContent = content;
+    if (fs.existsSync(planPath)) {
+      const existingStatus = readPlanExecutionStatus(planPath);
+      finalContent = setExecutionStatusInContent(content, existingStatus);
+    } else {
+      // File mới — đảm bảo có frontmatter với status mặc định
+      finalContent = setExecutionStatusInContent(content, 'not_executed');
+    }
+
+    fs.writeFileSync(planPath, finalContent, 'utf-8');
     logger.info(`[Plan] Saved plan to ${planPath}`);
 
     return res.json({
@@ -158,6 +240,53 @@ router.put('/', (req, res) => {
   } catch (err) {
     logger.error('[Plan] PUT error:', err);
     return res.status(500).json({ error: 'Lỗi ghi file plan' });
+  }
+});
+
+/**
+ * PATCH /api/plan/status
+ * Cập nhật executionStatus của một plan qua frontmatter.
+ * Body: { projectId, filename, executionStatus }
+ */
+router.patch('/status', (req, res) => {
+  try {
+    const { projectId, filename, executionStatus } = req.body as {
+      projectId: string;
+      filename: string;
+      executionStatus: ExecutionStatus;
+    };
+
+    if (!projectId || !filename || !executionStatus) {
+      return res.status(400).json({ error: 'projectId, filename và executionStatus là bắt buộc' });
+    }
+
+    const validStatuses: ExecutionStatus[] = ['not_executed', 'in_progress', 'completed'];
+    if (!validStatuses.includes(executionStatus)) {
+      return res.status(400).json({ error: 'executionStatus không hợp lệ' });
+    }
+
+    const project = getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project không tồn tại' });
+    }
+
+    const plansDir = getPlansDir(project.path);
+    const safeName = path.basename(filename);
+    const fullPath = path.join(plansDir, safeName);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File không tồn tại' });
+    }
+
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const updatedContent = setExecutionStatusInContent(content, executionStatus);
+    fs.writeFileSync(fullPath, updatedContent, 'utf-8');
+    logger.info(`[Plan] Updated executionStatus to '${executionStatus}' for ${safeName}`);
+
+    return res.json({ success: true, executionStatus });
+  } catch (err) {
+    logger.error('[Plan] PATCH /status error:', err);
+    return res.status(500).json({ error: 'Lỗi cập nhật trạng thái plan' });
   }
 });
 

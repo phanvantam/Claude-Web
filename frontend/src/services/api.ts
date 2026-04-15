@@ -209,11 +209,15 @@ export interface PlanData {
   content?: string;
 }
 
+/** Trạng thái thực thi của plan */
+export type PlanExecutionStatus = 'not_executed' | 'in_progress' | 'completed';
+
 /** Thông tin file plan trong danh sách */
 export interface PlanFileInfo {
   filename: string;
   updatedAt: string;
   sizeBytes: number;
+  executionStatus?: PlanExecutionStatus;
 }
 
 export const planApi = {
@@ -231,6 +235,12 @@ export const planApi = {
     fetchJSON<{ success: boolean; filename: string; filepath: string }>('/plan', {
       method: 'PUT',
       body: JSON.stringify({ projectId, content, filename }),
+    }),
+  /** Cập nhật trạng thái thực thi của plan */
+  updateStatus: (projectId: string, filename: string, executionStatus: PlanExecutionStatus) =>
+    fetchJSON<{ success: boolean; executionStatus: PlanExecutionStatus }>('/plan/status', {
+      method: 'PATCH',
+      body: JSON.stringify({ projectId, filename, executionStatus }),
     }),
   /** Xóa file plan */
   delete: (projectId: string, filename: string) =>

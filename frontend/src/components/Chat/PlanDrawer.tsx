@@ -4,7 +4,11 @@ import {
   FileTextOutlined,
   ReloadOutlined,
   PlusOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
+import type { PlanExecutionStatus } from '../../services/api';
 import { planApi } from '../../services/api';
 import type { PlanFileInfo } from '../../services/api';
 import PlanModal from './PlanModal';
@@ -15,6 +19,8 @@ interface PlanDrawerProps {
   projectId?: string;
   /** Callback gửi tin nhắn thực thi vào phiên chat hiện tại */
   onExecute?: (text: string) => void;
+  /** Callback báo plan vừa bắt đầu thực thi */
+  onExecutionStarted?: (filename: string) => void;
   /** Permission mode hiện tại của session — truyền xuống PlanModal */
   permissionMode?: string;
   /** Callback thay đổi permission mode — dùng khi tự động chuyển mode lúc thực thi */
@@ -25,7 +31,7 @@ interface PlanDrawerProps {
  * Drawer hiển thị danh sách file kế hoạch trong .claude/plans/.
  * Click vào item → mở PlanModal để xem/sửa/thực thi.
  */
-const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExecute, permissionMode, onPermissionModeChange }) => {
+const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExecute, onExecutionStarted, permissionMode, onPermissionModeChange }) => {
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<PlanFileInfo[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -101,6 +107,24 @@ const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExe
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     return `${(bytes / 1024).toFixed(1)} KB`;
+  };
+
+  const statusConfig: Record<PlanExecutionStatus, { label: string; color: string; icon: React.ReactNode }> = {
+    not_executed: {
+      label: 'Chưa chạy',
+      color: 'var(--text-muted)',
+      icon: <ClockCircleOutlined />,
+    },
+    in_progress: {
+      label: 'Đang chạy',
+      color: '#f39c12',
+      icon: <SyncOutlined spin />,
+    },
+    completed: {
+      label: 'Hoàn tất',
+      color: '#00b894',
+      icon: <CheckCircleOutlined />,
+    },
   };
 
   return (
@@ -192,22 +216,41 @@ const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExe
         ) : (
           <List
             dataSource={plans}
-            renderItem={(plan) => (
-              <div
-                className="plan-list-item"
-                onClick={() => handleOpenPlan(plan.filename)}
-              >
-                <div className="plan-list-item-icon">
-                  <FileTextOutlined />
-                </div>
-                <div className="plan-list-item-info">
-                  <div className="plan-list-item-name">{plan.filename}</div>
-                  <div className="plan-list-item-meta">
-                    {formatDate(plan.updatedAt)} · {formatSize(plan.sizeBytes)}
+            renderItem={(plan) => {
+              const status = plan.executionStatus || 'not_executed';
+              const statusInfo = statusConfig[status];
+              return (
+                <div
+                  className="plan-list-item"
+                  onClick={() => handleOpenPlan(plan.filename)}
+                >
+                  <div className="plan-list-item-icon">
+                    <FileTextOutlined />
+                  </div>
+                  <div className="plan-list-item-info">
+                    <div className="plan-list-item-name">
+                      {plan.filename}
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 10,
+                          color: statusInfo.color,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        {statusInfo.icon}
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                    <div className="plan-list-item-meta">
+                      {formatDate(plan.updatedAt)} · {formatSize(plan.sizeBytes)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            }}
           />
         )}
       </Drawer>
@@ -220,6 +263,7 @@ const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExe
         filename={selectedFilename}
         onExecute={handleExecute}
         onChanged={handlePlanChanged}
+        onExecutionStarted={onExecutionStarted}
         permissionMode={permissionMode}
         onPermissionModeChange={onPermissionModeChange}
       />

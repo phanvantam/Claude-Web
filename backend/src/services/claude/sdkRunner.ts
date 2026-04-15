@@ -51,7 +51,9 @@ export async function runSDKQuery(
   };
 
   const isAbortRequested = (): boolean => {
-    return !!state.abortRequestedAt || state.interruptReason === 'user_abort';
+    return !!state.abortRequestedAt
+      || state.interruptReason === 'user_abort'
+      || state.interruptReason === 'linux_completion_token';
   };
 
   const shouldIgnoreAfterAbort = (): boolean => {

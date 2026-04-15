@@ -21,6 +21,8 @@ interface PlanModalProps {
   onExecute: (text: string) => void;
   /** Callback sau khi lưu/xóa thành công — PlanDrawer sẽ refresh danh sách */
   onChanged: () => void;
+  /** Callback báo plan vừa bắt đầu thực thi */
+  onExecutionStarted?: (filename: string) => void;
   /** Permission mode hiện tại của session */
   permissionMode?: string;
   /** Callback thay đổi permission mode — dùng khi tự động chuyển mode lúc thực thi */
@@ -39,6 +41,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
   filename,
   onExecute,
   onChanged,
+  onExecutionStarted,
   permissionMode,
   onPermissionModeChange,
 }) => {
@@ -48,6 +51,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
   const [editContent, setEditContent] = useState('');
   const [activeTab, setActiveTab] = useState<'preview' | 'edit'>('preview');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
+  const [executeModalOpen, setExecuteModalOpen] = useState(false);
   /** Tên file khi tạo mới — cho user nhập */
   const [newFilename, setNewFilename] = useState('');
   const isNew = !filename;
@@ -134,10 +138,31 @@ const PlanModal: React.FC<PlanModalProps> = ({
 
   /** Gửi lệnh thực thi kế hoạch vào phiên chat — Tự động chuyển mode khi bấm */
   const handleExecute = useCallback(() => {
-    const planFilename = filename || newFilename;
-    if (!planFilename) {
+    // Normalize filename giống handleSave
+    const normalizedFilename = (filename || newFilename.trim());
+    const planFilename = normalizedFilename.endsWith('.md')
+      ? normalizedFilename
+      : `${normalizedFilename}.md`;
+
+    if (!planFilename || planFilename === '.md') {
       message.warning('Vui lòng lưu kế hoạch trước khi thực thi');
       return;
+    }
+    setExecuteModalOpen(true);
+  }, [filename, newFilename]);
+
+  const doConfirmExecute = useCallback(async () => {
+    const normalizedFilename = (filename || newFilename.trim());
+    const planFilename = normalizedFilename.endsWith('.md')
+      ? normalizedFilename
+      : `${normalizedFilename}.md`;
+    if (!planFilename || planFilename === '.md' || !projectId) return;
+
+    // Cập nhật trạng thái thành in_progress
+    try {
+      await planApi.updateStatus(projectId, planFilename, 'in_progress');
+    } catch {
+      // Không chặn execution nếu update thất bại
     }
 
     // Tự động chuyển từ chế độ "Kế hoạch" sang "Chấp nhận sửa" để Claude có quyền thực thi
@@ -161,10 +186,18 @@ const PlanModal: React.FC<PlanModalProps> = ({
       promptLines.push('', 'Chỉ thị bổ sung:', additionalInstructions.trim());
     }
 
+    // Báo cho ChatPage biết plan nào đang được thực thi
+    if (onExecutionStarted) {
+      onExecutionStarted(planFilename);
+    }
+
     onExecute(promptLines.join('\n'));
+    setExecuteModalOpen(false);
+    setAdditionalInstructions('');
     onClose();
+    onChanged(); // Refresh danh sách plan ngay để badge đổi
     message.info('Đã gửi lệnh thực thi kế hoạch');
-  }, [filename, newFilename, additionalInstructions, onExecute, onClose, permissionMode, onPermissionModeChange]);
+  }, [filename, newFilename, additionalInstructions, onExecute, onClose, permissionMode, onPermissionModeChange, projectId, onExecutionStarted, onChanged]);
 
   const title = isNew ? 'Tạo kế hoạch mới' : filename;
 
@@ -173,11 +206,42 @@ const PlanModal: React.FC<PlanModalProps> = ({
       open={open}
       onCancel={onClose}
       title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: 'var(--text-primary)' }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', paddingRight: 32 }}>
+          <span style={{ color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {!isNew && (
+              <Tooltip title="Xóa file kế hoạch">
+                <Button
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={handleDelete}
+                />
+              </Tooltip>
+            )}
+            <Button
+              size="small"
+              icon={<SaveOutlined />}
+              onClick={handleSave}
+              loading={saving}
+            >
+              Lưu
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlayCircleOutlined />}
+              onClick={handleExecute}
+              style={{ background: '#00b894' }}
+            >
+              Thực thi
+            </Button>
+          </div>
         </div>
       }
-      width={720}
+      width={980}
+      style={{ maxWidth: '96vw', top: 24 }}
+      styles={{ body: { minHeight: '78vh', maxHeight: 'calc(100vh - 96px)', overflow: 'auto' } }}
       className="plan-modal"
       footer={null}
       destroyOnClose
@@ -229,7 +293,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
                   <Input.TextArea
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
-                    autoSize={{ minRows: 12, maxRows: 24 }}
+                    autoSize={{ minRows: 20, maxRows: 40 }}
                     className="plan-editor-textarea"
                     spellCheck={false}
                     placeholder="Nội dung Markdown..."
@@ -239,54 +303,33 @@ const PlanModal: React.FC<PlanModalProps> = ({
             ]}
           />
 
-          {/* Phần thực thi — chỉ thị bổ sung + nút action */}
-          <div className="plan-modal-execute">
-            <div className="plan-modal-execute-label">Chỉ thị bổ sung khi thực thi</div>
-            <Input.TextArea
-              value={additionalInstructions}
-              onChange={(e) => setAdditionalInstructions(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 5 }}
-              className="plan-editor-textarea"
-              placeholder="Ví dụ: Ưu tiên xử lý phần backend trước, bỏ qua bước 3..."
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="plan-modal-actions">
-            <div style={{ display: 'flex', gap: 8 }}>
-              {!isNew && (
-                <Tooltip title="Xóa file kế hoạch">
-                  <Button
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={handleDelete}
-                  />
-                </Tooltip>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button
-                size="small"
-                icon={<SaveOutlined />}
-                onClick={handleSave}
-                loading={saving}
-              >
-                Lưu
-              </Button>
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlayCircleOutlined />}
-                onClick={handleExecute}
-                style={{ background: '#00b894' }}
-              >
-                Thực thi
-              </Button>
-            </div>
-          </div>
+          {/* Actions - đã chuyển lên header, xóa phần này */}
         </div>
       )}
+
+      {/* Modal xác nhận thực thi */}
+      <Modal
+        open={executeModalOpen}
+        onCancel={() => { setExecuteModalOpen(false); setAdditionalInstructions(''); }}
+        onOk={doConfirmExecute}
+        title="Xác nhận thực thi kế hoạch"
+        okText="Thực thi"
+        cancelText="Hủy"
+        okButtonProps={{ style: { background: '#00b894' } }}
+        width={520}
+        className="plan-modal"
+      >
+        <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-secondary)' }}>
+          Bạn có thể thêm chỉ thị bổ sung trước khi thực thi:
+        </div>
+        <Input.TextArea
+          value={additionalInstructions}
+          onChange={(e) => setAdditionalInstructions(e.target.value)}
+          autoSize={{ minRows: 3, maxRows: 8 }}
+          className="plan-editor-textarea"
+          placeholder="Ví dụ: Ưu tiên xử lý phần backend trước, bỏ qua bước 3..."
+        />
+      </Modal>
     </Modal>
   );
 };
