@@ -35,6 +35,7 @@ export async function runSDKQuery(
   // Giữ abortController cho internal state tracking (pendingPermission abort listener)
   const abortController = new AbortController();
   state.abortController = abortController;
+  state.linuxCompletionTokenDetected = undefined;
 
   // ── Build SDK options (claude-agent-sdk format) ──
   const options: Record<string, any> = {

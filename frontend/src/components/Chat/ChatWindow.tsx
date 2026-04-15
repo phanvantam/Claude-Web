@@ -403,12 +403,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className="tl-block-content">
                 {block.type === 'text' ? (
                   <>
-                    {/* Streaming text: dùng plain text để tránh markdown parse lỗi khi chưa hoàn chỉnh */}
-                    {isStreaming && isLast ? (
-                      <div className="markdown-body streaming-text">{block.text}<span className="cursor-blink">▊</span></div>
-                    ) : (
-                      <MessageContent content={block.text} />
-                    )}
+                    <MessageContent content={block.text} />
+                    {isStreaming && isLast && <span className="cursor-blink">▊</span>}
                   </>
                 ) : (
                   <ToolCallCard
