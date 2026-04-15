@@ -159,7 +159,22 @@ export class ClaudeService extends EventEmitter {
     }, state, this).catch((err) => {
       logger.error(`[ClaudeService] SDK query error for ${sessionId}:`, err);
       this.emit('error', { sessionId, error: err.message || String(err) });
+
+      // Dọn sạch state xử lý để phiên không bị kẹt sau khi SDK crash.
+      // Nếu không reset đủ, lần gửi tiếp theo sẽ dính "already processing"/exit code 1.
       state.isProcessing = false;
+      state.processingStartedAt = undefined;
+      state.pendingPermission = undefined;
+      state.activeToolName = undefined;
+      state.activeSubAgent = undefined;
+      state.abortRequestedAt = undefined;
+      state.interruptReason = undefined;
+      state.partialAssistantBlocks = undefined;
+      state.partialToolCalls = undefined;
+      state.partialAssistantContent = undefined;
+      state.queryInstance = undefined;
+      state.abortController = undefined;
+
       this.emit('status', { sessionId, status: 'idle' });
     });
   }

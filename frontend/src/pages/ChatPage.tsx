@@ -455,8 +455,6 @@ const ChatPage: React.FC = () => {
         projectId={project?.id}
         onExecute={handleSend}
         onExecutionStarted={handleExecutionStarted}
-        permissionMode={sessionPermissionMode}
-        onPermissionModeChange={setSessionPermissionMode}
       />
     </div>
   );

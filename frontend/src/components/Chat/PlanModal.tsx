@@ -23,10 +23,6 @@ interface PlanModalProps {
   onChanged: () => void;
   /** Callback báo plan vừa bắt đầu thực thi */
   onExecutionStarted?: (filename: string) => void;
-  /** Permission mode hiện tại của session */
-  permissionMode?: string;
-  /** Callback thay đổi permission mode — dùng khi tự động chuyển mode lúc thực thi */
-  onPermissionModeChange?: (mode: string) => void;
 }
 
 /**
@@ -42,8 +38,6 @@ const PlanModal: React.FC<PlanModalProps> = ({
   onExecute,
   onChanged,
   onExecutionStarted,
-  permissionMode,
-  onPermissionModeChange,
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,11 +159,8 @@ const PlanModal: React.FC<PlanModalProps> = ({
       // Không chặn execution nếu update thất bại
     }
 
-    // Tự động chuyển từ chế độ "Kế hoạch" sang "Chấp nhận sửa" để Claude có quyền thực thi
-    if (permissionMode === 'plan' && onPermissionModeChange) {
-      onPermissionModeChange('acceptEdits');
-      message.info('Đã chuyển sang chế độ "Chấp nhận sửa" để thực thi kế hoạch');
-    }
+    // Không tự động đổi permission mode khi thực thi kế hoạch.
+    // User tự chọn mode trước khi bấm "Thực thi".
 
     // Xây dựng prompt thực thi chi tiết — Claude sẽ đọc file và báo cáo tiến độ
     const promptLines = [
@@ -197,7 +188,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
     onClose();
     onChanged(); // Refresh danh sách plan ngay để badge đổi
     message.info('Đã gửi lệnh thực thi kế hoạch');
-  }, [filename, newFilename, additionalInstructions, onExecute, onClose, permissionMode, onPermissionModeChange, projectId, onExecutionStarted, onChanged]);
+  }, [filename, newFilename, additionalInstructions, onExecute, onClose, projectId, onExecutionStarted, onChanged]);
 
   const title = isNew ? 'Tạo kế hoạch mới' : filename;
 
