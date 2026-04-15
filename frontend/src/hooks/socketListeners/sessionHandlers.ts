@@ -47,6 +47,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     idleTimeoutRef,
     restoringSessionIdRef,
     idleDuringRestoreRef,
+    localAbortAtRef,
     switchTimeoutRef,
   } = deps;
 
@@ -143,6 +144,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     }
 
     if (!wasProcessing) {
+      localAbortAtRef.current = null;
       setStatus('idle');
       setProcessingStartedAt(null);
       setActiveToolName(null);
@@ -256,6 +258,11 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     if (data.status === 'idle' && restoringSessionIdRef.current === data.sessionId) {
       idleDuringRestoreRef.current = true;
     }
+
+    if (data.status === 'idle') {
+      localAbortAtRef.current = null;
+    }
+
     setStatus(data.status);
     setActiveToolName(data.status === 'tool_use' && data.toolName ? data.toolName : null);
     if (data.status === 'idle') {

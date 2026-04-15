@@ -64,5 +64,6 @@ export interface SocketHandlerDeps {
   idleTimeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   restoringSessionIdRef: MutableRefObject<string | null>;
   idleDuringRestoreRef: MutableRefObject<boolean>;
+  localAbortAtRef: MutableRefObject<number | null>;
   switchTimeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
 }

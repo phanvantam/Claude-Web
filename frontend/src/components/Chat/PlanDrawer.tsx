@@ -79,7 +79,7 @@ const PlanDrawer: React.FC<PlanDrawerProps> = ({ open, onClose, projectId, onExe
   const handleExecute = (text: string) => {
     if (onExecute) {
       onExecute(text);
-      onClose(); // Đóng drawer sau khi thực thi
+      onClose();
     }
   };
 

@@ -147,6 +147,8 @@ export function useChat(): UseChatReturn {
   // Track session đang restore để phân biệt idle ban đầu với idle event thật sự đến trong lúc attach
   const restoringSessionIdRef = useRef<string | null>(null);
   const idleDuringRestoreRef = useRef(false);
+  // Track thời điểm user bấm Stop để bỏ qua các stream event đến trễ từ backend
+  const localAbortAtRef = useRef<number | null>(null);
 
   // Ref timeout safety — tự tắt overlay nếu session:started không đến
   const switchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,11 +180,13 @@ export function useChat(): UseChatReturn {
     idleTimeoutRef,
     restoringSessionIdRef,
     idleDuringRestoreRef,
+    localAbortAtRef,
     switchTimeoutRef,
   });
 
   const startSession = useCallback((projectId: string, existingSessionId?: string) => {
     const socket = socketService.getSocket();
+    localAbortAtRef.current = null;
     setMessages([]);
     setStreamingContent('');
     setStreamingBlocks([]);
@@ -212,6 +216,7 @@ export function useChat(): UseChatReturn {
 
   const sendMessage = useCallback((text: string, displayText?: string) => {
     if (!sessionIdRef.current) return;
+    localAbortAtRef.current = null;
     const socket = socketService.getSocket();
     socket?.emit('chat:send', {
       sessionId: sessionIdRef.current,
@@ -222,6 +227,7 @@ export function useChat(): UseChatReturn {
 
   const abortGeneration = useCallback(() => {
     if (!sessionIdRef.current) return;
+    localAbortAtRef.current = Date.now();
     const socket = socketService.getSocket();
     socket?.emit('chat:abort', { sessionId: sessionIdRef.current });
     setStatus('idle');

@@ -23,15 +23,14 @@ interface PlanModalProps {
   onChanged: () => void;
   /** Permission mode hiện tại của session */
   permissionMode?: string;
-  /** Callback thay đổi permission mode — tự động chuyển khi thực thi */
+  /** Callback thay đổi permission mode — dùng khi tự động chuyển mode lúc thực thi */
   onPermissionModeChange?: (mode: string) => void;
 }
 
 /**
- * Modal xem chi tiết, chỉnh sửa và thực thi file kế hoạch.
+ * Modal xem chi tiết và chỉnh sửa file kế hoạch.
  * - Tab Preview: render Markdown
  * - Tab Edit: TextArea chỉnh sửa nội dung
- * - Phần thực thi: TextArea chỉ thị bổ sung + nút Thực thi
  */
 const PlanModal: React.FC<PlanModalProps> = ({
   open,
@@ -91,8 +90,9 @@ const PlanModal: React.FC<PlanModalProps> = ({
   const handleSave = useCallback(async () => {
     if (!projectId) return;
 
+    const normalizedFilename = newFilename.trim();
     const targetFilename = isNew
-      ? (newFilename.trim() || 'new-plan') + (newFilename.endsWith('.md') ? '' : '.md')
+      ? (normalizedFilename || 'new-plan') + (normalizedFilename.endsWith('.md') ? '' : '.md')
       : filename!;
 
     setSaving(true);
@@ -132,7 +132,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
     });
   }, [projectId, filename, onChanged, onClose]);
 
-  /** Gửi lệnh thực thi kế hoạch vào phiên chat */
+  /** Gửi lệnh thực thi kế hoạch vào phiên chat — Tự động chuyển mode khi bấm */
   const handleExecute = useCallback(() => {
     const planFilename = filename || newFilename;
     if (!planFilename) {

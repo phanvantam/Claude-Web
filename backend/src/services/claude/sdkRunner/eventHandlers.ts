@@ -7,9 +7,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
 import { ChatMessage, ToolCall, ContentBlock } from '../../../types';
 import { updateSession, getSession } from '../../session';
 import { getProject } from '../../project';
@@ -263,21 +260,36 @@ export function handleResultEvent(
   const isAbort = result.terminal_reason === 'aborted_streaming' ||
     (Array.isArray(result.errors) && result.errors.some((e: any) => String(e).includes('Request was aborted')));
 
+  const completedByModelSessionEndKey = state.interruptReason === 'linux_completion_token';
+  const completionReasonLabel = completedByModelSessionEndKey
+    ? `Hoàn thành do model gửi key kết thúc phiên: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`
+    : `Hoàn thành: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`;
+
   const abortReasonLabel = state.interruptReason === 'user_abort'
     ? 'Đã dừng theo thao tác bấm Dừng của người dùng.'
     : state.interruptReason === 'watchdog_timeout'
       ? 'Đã dừng do hết thời gian chờ (timeout) vì không còn dữ liệu mới.'
-      : state.interruptReason === 'linux_completion_token'
-        ? 'Đã dừng khi phát hiện tín hiệu kết thúc phản hồi trên Linux.'
-        : 'Đã dừng do tiến trình bị ngắt.';
+      : 'Đã dừng do tiến trình bị ngắt.';
 
   // System messages cho error / completion / abort
-  if (isAbort) {
+  if (completedByModelSessionEndKey && isAbort) {
+    const completionMsg: ChatMessage = {
+      id: `result-${Date.now()}`,
+      role: 'system',
+      content: completionReasonLabel,
+      timestamp: new Date().toISOString(),
+      cost: costUsd,
+    };
+    state.messages.push(completionMsg);
+    persistMessage(sessionId, completionMsg);
+    emitter.emit('result', { sessionId, result: completionMsg, data: result });
+  } else if (isAbort) {
     const abortMsg: ChatMessage = {
       id: `result-${Date.now()}`,
       role: 'system',
       content: abortReasonLabel,
       timestamp: new Date().toISOString(),
+      cost: costUsd,
     };
     state.messages.push(abortMsg);
     persistMessage(sessionId, abortMsg);
@@ -304,7 +316,7 @@ export function handleResultEvent(
     const finalMsg: ChatMessage = {
       id: `result-${Date.now()}`,
       role: 'system',
-      content: `Hoàn thành: ${(durationMs / 1000).toFixed(1)}s · $${costUsd.toFixed(4)}`,
+      content: completionReasonLabel,
       timestamp: new Date().toISOString(),
       cost: costUsd,
     };
@@ -315,19 +327,6 @@ export function handleResultEvent(
 
   if (result.permission_denials && result.permission_denials.length > 0) {
     logger.warn(`[Claude][${sessionId}] Permission denials:`, result.permission_denials);
-  }
-
-  // Plan mode: tự động copy file plan từ ~/.claude/plans/ vào project directory
-  // Claude CLI lưu plan ở vị trí global — cần đưa về project để PlanDrawer hiển thị được.
-  if (state.permissionMode === 'plan') {
-    try {
-      const project = getProject(state.projectId);
-      if (project?.path) {
-        copyLatestPlanToProject(sessionId, project.path);
-      }
-    } catch (err) {
-      logger.warn(`[Claude][${sessionId}] Failed to copy plan to project:`, err);
-    }
   }
 
   state.isProcessing = false;
@@ -346,55 +345,3 @@ export function handleResultEvent(
   } catch { /* ignore — stream có thể đã kết thúc */ }
 }
 
-/**
- * Copy file plan mới nhất từ ~/.claude/plans/ vào thư mục .claude/plans/ CỦA PROJECT.
- * Safety net: nếu Claude CLI vẫn ghi vào global, hàm này đưa về đúng chỗ.
- * Giữ nguyên tên file gốc (thay vì đổi thành IMPLEMENTATION_PLAN.md).
- */
-function copyLatestPlanToProject(sessionId: string, projectPath: string): void {
-  const globalPlansDir = path.join(os.homedir(), '.claude', 'plans');
-  if (!fs.existsSync(globalPlansDir)) {
-    logger.debug(`[Claude][${sessionId}] ~/.claude/plans/ không tồn tại, bỏ qua copy plan`);
-    return;
-  }
-
-  // Tìm file .md mới nhất trong ~/.claude/plans/
-  const files = fs.readdirSync(globalPlansDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => {
-      const fullPath = path.join(globalPlansDir, f);
-      const stat = fs.statSync(fullPath);
-      return { name: f, path: fullPath, mtime: stat.mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime); // Mới nhất trước
-
-  if (files.length === 0) {
-    logger.debug(`[Claude][${sessionId}] Không tìm thấy file plan nào trong ~/.claude/plans/`);
-    return;
-  }
-
-  const latestPlan = files[0];
-  // Chỉ copy nếu file được tạo/sửa trong vòng 5 phút gần nhất
-  // (tránh copy file plan cũ không liên quan đến lần chạy hiện tại)
-  const AGE_LIMIT_MS = 5 * 60 * 1000;
-  if (Date.now() - latestPlan.mtime > AGE_LIMIT_MS) {
-    logger.debug(`[Claude][${sessionId}] Plan file ${latestPlan.name} quá cũ (${Math.round((Date.now() - latestPlan.mtime) / 1000)}s), bỏ qua`);
-    return;
-  }
-
-  // Copy vào .claude/plans/ của project — giữ nguyên tên file gốc
-  const projectPlansDir = path.join(projectPath, '.claude', 'plans');
-  if (!fs.existsSync(projectPlansDir)) {
-    fs.mkdirSync(projectPlansDir, { recursive: true });
-  }
-  const content = fs.readFileSync(latestPlan.path, 'utf-8');
-  const targetPath = path.join(projectPlansDir, latestPlan.name);
-
-  // Chỉ copy nếu file chưa tồn tại trong project (tránh ghi đè file đã có)
-  if (!fs.existsSync(targetPath)) {
-    fs.writeFileSync(targetPath, content, 'utf-8');
-    logger.info(`[Claude][${sessionId}] Đã copy plan từ global → project: ${latestPlan.name} → ${targetPath}`);
-  } else {
-    logger.debug(`[Claude][${sessionId}] Plan ${latestPlan.name} đã tồn tại trong project, bỏ qua copy`);
-  }
-}

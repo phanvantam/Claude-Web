@@ -1,3 +1,4 @@
+import path from 'path';
 import { EventEmitter } from 'events';
 import { updateSession } from '../session';
 import { getMcpServersDetailed, buildSDKAgentDefinitions } from '../claude-meta';
@@ -8,7 +9,10 @@ import { QueryProcessor } from './processor';
 import { persistMessage } from './messageHelpers';
 import { handleAssistantEvent, handleResultEvent, TurnContext } from './sdkRunner/eventHandlers';
 
-const LINUX_HIDDEN_COMPLETION_TOKEN = '__CLAUDE_SESSION_END__';
+const LINUX_HIDDEN_COMPLETION_TOKEN = '__CLAUDE_SESSION_END__'; // TEMP: currently used cross-platform for testing
+const ENABLE_CLAUDE_SESSION_END = ['1', 'true', 'yes', 'on'].includes(
+  (process.env.ENABLE_CLAUDE_SESSION_END ?? 'true').trim().toLowerCase(),
+);
 
 /**
  * Chạy SDK query() và xử lý stream messages.
@@ -44,6 +48,14 @@ export async function runSDKQuery(
     systemPrompt: { type: 'preset', preset: 'claude_code' },
     // Load settings từ project, user (~/.config/claude/), local
     settingSources: ['project', 'user', 'local'],
+  };
+
+  const isAbortRequested = (): boolean => {
+    return !!state.abortRequestedAt || state.interruptReason === 'user_abort';
+  };
+
+  const shouldIgnoreAfterAbort = (): boolean => {
+    return isAbortRequested() && state.isProcessing;
   };
 
   // ── allowedTools: LUÔN truyền mỗi lần query ──
@@ -128,6 +140,11 @@ export async function runSDKQuery(
     input: Record<string, unknown>,
     { signal }: { signal: AbortSignal },
   ) => {
+    if (isAbortRequested()) {
+      logger.info(`[Claude][${sessionId}] canUseTool denied because abort was requested`);
+      return { behavior: 'deny' as const, message: 'Đã hủy theo yêu cầu người dùng.' };
+    }
+
     const riskLevel = getToolRiskLevel(toolName);
     logger.info(`[Claude][${sessionId}] canUseTool: ${toolName} (risk=${riskLevel}, mode=${options.permissionMode})`);
     state.activeToolName = toolName;
@@ -160,17 +177,46 @@ export async function runSDKQuery(
         return { behavior: 'allow' as const, updatedInput: input };
       }
       // Ngoại lệ: cho phép ghi file vào thư mục plans của PROJECT (không phải global ~/.claude/plans/)
-      const filePath = typeof (input as any).file_path === 'string' ? (input as any).file_path : '';
+      const rawFilePath = typeof (input as any).file_path === 'string' ? String((input as any).file_path).trim() : '';
       const projectPlansDir = `${config.cwd}/.claude/plans/`;
-      const isWriteToPlan = /^(Edit|Write|MultiEdit|Create)/i.test(toolName)
-        && (filePath.includes(projectPlansDir) || filePath.startsWith('.claude/plans/'));
-      if (isWriteToPlan) {
-        // Nếu Claude dùng relative path → chuyển thành absolute path trong project
-        if (!filePath.startsWith('/') && filePath.startsWith('.claude/plans/')) {
-          (input as any).file_path = `${config.cwd}/${filePath}`;
-          logger.info(`[Claude][${sessionId}] Plan mode: rewrite relative → absolute: ${(input as any).file_path}`);
+      const normalizedProjectPlansDir = projectPlansDir.replace(/\/+/g, '/');
+      const normalizePath = (v: string) => v.replace(/\\/g, '/');
+      const isWriteTool = /^(Edit|Write|MultiEdit|Create)/i.test(toolName);
+
+      if (isWriteTool) {
+        if (!rawFilePath) {
+          return {
+            behavior: 'deny' as const,
+            message: `Chế độ lập kế hoạch: tool ${toolName} bắt buộc có file_path trong ${projectPlansDir}`,
+          };
         }
-        logger.info(`[Claude][${sessionId}] Plan mode: cho phép ghi plan file ${(input as any).file_path}`);
+
+        const normalizedRawPath = normalizePath(rawFilePath);
+        const isGlobalPlansPath = normalizedRawPath.includes('/.claude/plans/') && !normalizedRawPath.startsWith(normalizedProjectPlansDir);
+        if (isGlobalPlansPath || normalizedRawPath.startsWith('~/.claude/plans/')) {
+          logger.warn(`[Claude][${sessionId}] Plan mode: chặn ghi vào global plans path ${rawFilePath}`);
+          return {
+            behavior: 'deny' as const,
+            message: `Chế độ lập kế hoạch: chỉ được ghi vào ${projectPlansDir}, không được dùng ~/.claude/plans/.`,
+          };
+        }
+
+        let resolvedPath = rawFilePath;
+        if (!path.isAbsolute(resolvedPath)) {
+          resolvedPath = path.resolve(config.cwd, resolvedPath);
+        }
+        const normalizedResolvedPath = normalizePath(path.resolve(resolvedPath));
+
+        if (!normalizedResolvedPath.startsWith(normalizedProjectPlansDir)) {
+          logger.warn(`[Claude][${sessionId}] Plan mode: chặn ghi ngoài project plans dir ${resolvedPath}`);
+          return {
+            behavior: 'deny' as const,
+            message: `Chế độ lập kế hoạch: chỉ được ghi kế hoạch trong ${projectPlansDir}`,
+          };
+        }
+
+        (input as any).file_path = resolvedPath;
+        logger.info(`[Claude][${sessionId}] Plan mode: cho phép ghi plan file ${resolvedPath}`);
         return { behavior: 'allow' as const, updatedInput: input };
       }
       logger.info(`[Claude][${sessionId}] Plan mode: chặn tool ${toolName}`);
@@ -220,14 +266,6 @@ export async function runSDKQuery(
   // Nối thêm (append) chỉ thị bổ sung dựa theo context.
   const appendParts: string[] = [];
 
-  if (process.platform === 'linux') {
-    appendParts.push(
-      '[LINUX STREAM COMPLETION INSTRUCTIONS]',
-      `BẮT BUỘC: Chỉ khi đã hoàn tất TOÀN BỘ câu trả lời cuối cùng của lượt hiện tại, hãy thêm chính xác token ${LINUX_HIDDEN_COMPLETION_TOKEN} ở CUỐI CÙNG của text cuối (không backticks, không markdown).`,
-      'Không được thêm token này ở các text trung gian, và không có ký tự nào sau token.',
-    );
-  }
-
   // Chỉ thị cho plan mode — ép Claude ghi kế hoạch vào đúng thư mục PROJECT (absolute path)
   // QUAN TRỌNG: dùng absolute path để tránh CLI resolve sang ~/.claude/plans/ (global)
   if (config.permissionMode === 'plan') {
@@ -258,7 +296,17 @@ export async function runSDKQuery(
     };
   }
 
+  const completionTokenUserInstruction = [
+    '[SESSION END KEY REQUIREMENT]',
+    `Khi đã hoàn tất phản hồi cuối cùng, PHẢI in chính xác key sau ở CUỐI CÙNG: ${LINUX_HIDDEN_COMPLETION_TOKEN}`,
+    'Không dùng backticks/markdown cho key này và không có ký tự nào sau key.',
+  ].join('\n');
+  const effectivePrompt = ENABLE_CLAUDE_SESSION_END
+    ? `${message}\n\n${completionTokenUserInstruction}`
+    : message;
+
   logger.info(`[sdkRunner] SDK Session Options: sessionId=${sessionId}, model=${options.model}, systemPromptAppendLength=${(options.systemPrompt as any).append?.length || 0}`);
+  logger.debug(`[sdkRunner] completionTokenInstructionInUserPrompt=${ENABLE_CLAUDE_SESSION_END}`);
   if ((options.systemPrompt as any).append) {
     logger.debug(`[sdkRunner] System Prompt Append: ${(options.systemPrompt as any).append}`);
   }
@@ -392,12 +440,21 @@ export async function runSDKQuery(
     state.partialAssistantContent = undefined;
   };
 
+  const normalizedCompletionToken = LINUX_HIDDEN_COMPLETION_TOKEN.toUpperCase();
+  let streamCompletionTokenTail = '';
+
   const hasLinuxCompletionToken = (text: string): boolean => {
-    return process.platform === 'linux' && text.includes(LINUX_HIDDEN_COMPLETION_TOKEN);
+    if (!ENABLE_CLAUDE_SESSION_END) return false;
+    return text.toUpperCase().includes(normalizedCompletionToken);
   };
 
-  const sanitizeLinuxCompletionToken = (text: string): string => {
-    return text.replaceAll(LINUX_HIDDEN_COMPLETION_TOKEN, '');
+  const hasLinuxCompletionTokenAcrossStreamChunks = (chunk: string): boolean => {
+    if (!ENABLE_CLAUDE_SESSION_END || !chunk) return false;
+    const merged = `${streamCompletionTokenTail}${chunk}`.toUpperCase();
+    const found = merged.includes(normalizedCompletionToken);
+    const tailLength = Math.max(normalizedCompletionToken.length - 1, 0);
+    streamCompletionTokenTail = tailLength > 0 ? merged.slice(-tailLength) : '';
+    return found;
   };
 
   const interruptForLinuxCompletion = async (source: 'stream_event' | 'assistant') => {
@@ -420,7 +477,7 @@ export async function runSDKQuery(
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Starting sdk.query (string prompt)...`);
     // claude-agent-sdk: dùng string prompt trực tiếp, SDK tự đóng stdin → không treo pipe
     queryInstance = sdk.query({
-      prompt: message,
+      prompt: effectivePrompt,
       options,
       // Đưa pathToClaudeCodeExecutable ra ngoài cấp root của object cấu hình
       pathToClaudeCodeExecutable: utils.getClaudeBinary()
@@ -428,6 +485,20 @@ export async function runSDKQuery(
 
     // Lưu query instance vào state — abortSession sẽ gọi interrupt() để kill CLI process
     state.queryInstance = queryInstance;
+
+    // Xử lý race: user bấm Stop trước khi queryInstance được gán.
+    if (isAbortRequested()) {
+      logger.info(`[Claude][${sessionId}] Abort was requested before loop start, interrupt immediately`);
+      try {
+        await queryInstance.interrupt();
+      } catch (err: any) {
+        if (err?.message?.includes('Query closed') || err?.message?.includes('ProcessTransport')) {
+          logger.debug(`[Claude][${sessionId}] Expected close error after early interrupt`);
+        } else {
+          logger.warn(`[Claude][${sessionId}] Early interrupt failed:`, err);
+        }
+      }
+    }
 
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] sdk.query initiated, starting for-await loop`);
 
@@ -439,6 +510,13 @@ export async function runSDKQuery(
       eventCount++;
       const type = sdkMsg.type as string;
       logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
+
+      // Sau khi user abort, bỏ qua mọi event trung gian để tránh stream lại lên UI.
+      // Chỉ giữ lại result để cleanup và kết thúc vòng đời query.
+      if (shouldIgnoreAfterAbort() && type !== 'result') {
+        logger.debug(`[Claude][${sessionId}] Ignore ${type} after user abort request`);
+        continue;
+      }
 
       // Mọi event nhận được đều reset safety timer — chứng tỏ CLI còn sống
       resetSafetyTimer();
@@ -608,9 +686,8 @@ export async function runSDKQuery(
             if (!delta) break;
 
             if (delta.type === 'text_delta' && delta.text) {
-              let streamText = delta.text;
-              if (hasLinuxCompletionToken(streamText)) {
-                streamText = sanitizeLinuxCompletionToken(streamText);
+              const streamText = delta.text;
+              if (hasLinuxCompletionTokenAcrossStreamChunks(streamText) || hasLinuxCompletionToken(streamText)) {
                 void interruptForLinuxCompletion('stream_event');
               }
               // Text delta — stream từng chữ tới frontend (live preview)
@@ -667,7 +744,6 @@ export async function runSDKQuery(
             if (apiMsg?.content && Array.isArray(apiMsg.content)) {
               for (const block of apiMsg.content) {
                 if (block.type === 'text' && typeof block.text === 'string' && hasLinuxCompletionToken(block.text)) {
-                  block.text = sanitizeLinuxCompletionToken(block.text);
                   void interruptForLinuxCompletion('assistant');
                 }
               }
@@ -778,10 +854,18 @@ export async function runSDKQuery(
       clearPartialTurnInState();
       emitter.emit('status', { sessionId, status: 'idle' });
 
+      const forcedResultContent = state.interruptReason === 'user_abort'
+        ? 'Đã dừng theo thao tác bấm Dừng của người dùng.'
+        : state.interruptReason === 'watchdog_timeout'
+          ? 'Đã dừng do hết thời gian chờ (timeout) vì không còn dữ liệu mới.'
+          : state.interruptReason === 'linux_completion_token'
+            ? 'Hoàn thành do model gửi key kết thúc phiên.'
+            : 'Hoàn thành.';
+
       const forcedResultMsg = {
         id: `result-${Date.now()}`,
         role: 'system' as const,
-        content: 'Hoàn thành.',
+        content: forcedResultContent,
         timestamp: new Date().toISOString(),
       };
       state.messages.push(forcedResultMsg);
@@ -790,6 +874,8 @@ export async function runSDKQuery(
     }
 
     state.linuxCompletionTokenDetected = undefined;
+    state.abortRequestedAt = undefined;
+    state.interruptReason = undefined;
   }
 }
 

@@ -104,6 +104,8 @@ export class ClaudeService extends EventEmitter {
 
     state.isProcessing = true;
     state.processingStartedAt = Date.now();
+    state.abortRequestedAt = undefined;
+    state.interruptReason = undefined;
     this.emit('status', { sessionId, status: 'initializing', startedAt: state.processingStartedAt });
 
     // Lưu user message vào state + DB
@@ -305,6 +307,7 @@ export class ClaudeService extends EventEmitter {
     const state = this.sessions.get(sessionId);
     if (!state) return;
 
+    state.abortRequestedAt = Date.now();
     state.interruptReason = 'user_abort';
 
     // Gọi interrupt() trên SDK query instance — đây mới thực sự kill CLI process.
@@ -321,6 +324,9 @@ export class ClaudeService extends EventEmitter {
       state.abortController.abort();
       state.abortController = undefined;
     }
+
+    // Đảm bảo frontend luôn nhận tín hiệu dừng ngay cả khi SDK result đến chậm.
+    this.emit('status', { sessionId, status: 'idle' });
   }
 
   stopSession(sessionId: string): void {

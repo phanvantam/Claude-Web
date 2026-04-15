@@ -425,7 +425,7 @@ const ChatPage: React.FC = () => {
         projectId={project?.id}
       />
 
-      {/* Plan Drawer — danh sách kế hoạch và thực thi */}
+      {/* Plan Drawer — danh sách kế hoạch và thực thi thủ công */}
       <PlanDrawer
         open={planDrawerOpen}
         onClose={() => { setPlanDrawerOpen(false); fetchPlanCount(); }}

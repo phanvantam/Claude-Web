@@ -40,6 +40,8 @@ export interface ClaudeSessionState {
   partialAssistantContent?: string;
   /** Linux completion token đã được phát hiện trong stream text */
   linuxCompletionTokenDetected?: boolean;
+  /** Timestamp khi user yêu cầu dừng — dùng để chặn stream events còn tồn */
+  abortRequestedAt?: number;
   /** Lý do interrupt gần nhất để hiển thị trạng thái dừng rõ ràng */
   interruptReason?: 'user_abort' | 'watchdog_timeout' | 'linux_completion_token' | 'unknown';
 }

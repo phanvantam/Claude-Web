@@ -19,6 +19,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     setTodoLists,
     streamingRef,
     sessionIdRef,
+    localAbortAtRef,
   } = deps;
 
   const readTodosFromInput = (input: Record<string, unknown> | undefined) => {
@@ -62,10 +63,15 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     setTodoLists([next]);
   };
 
+  const shouldIgnoreLateStreamAfterAbort = () => {
+    return !!localAbortAtRef.current;
+  };
+
 
   // Text stream
   socket.on('chat:stream', (data: { sessionId: string; content: string }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
     streamingRef.current += data.content;
     setStreamingContent(streamingRef.current);
     setStreamingBlocks(prev => {
@@ -82,6 +88,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
   // Tool call hoàn chỉnh (fallback khi không có stream block events)
   socket.on('chat:stream:tool', (data: { sessionId: string; tool: { id: string; name: string; input: Record<string, unknown> } }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
     setStreamingBlocks(prev => [...prev, { type: 'tool_use', tool: { ...data.tool } }]);
     if (data.tool.name === 'TodoWrite') {
       upsertTodoList(readTodosFromInput(data.tool.input), { toolCallId: data.tool.id });
@@ -100,6 +107,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     toolId?: string;
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
     if (data.blockType === 'tool_use' && data.toolName) {
       setStreamingBlocks(prev => [
         ...prev,
@@ -128,6 +136,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     toolName?: string;
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
 
     if (data.deltaType === 'input_json_delta') {
       setStreamingBlocks(prev => {
@@ -170,6 +179,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     streamingInput?: string;
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
     if (data.blockType === 'tool_use') {
       setStreamingBlocks(prev => {
         const lastIdx = prev.length - 1;
@@ -203,6 +213,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     blocks: import('../../types').ContentBlock[];
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
+    if (shouldIgnoreLateStreamAfterAbort()) return;
     setStreamingBlocks(data.blocks);
 
     // Extract latest TodoWrite block và upsert vào todoLists
