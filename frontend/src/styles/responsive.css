@@ -79,10 +79,11 @@
     font-size: 11px;
   }
 
-  /* ── Chat window — bớt padding ── */
+  /* ── Chat window — bớt padding + dành chỗ cho input box fixed ── */
   .chat-window {
     padding: 12px 10px;
-    padding-bottom: 8px;
+    padding-bottom: calc(8px + 80px + env(safe-area-inset-bottom));
+    /* 80px = chiều cao ước tính input box wrapper + padding */
   }
 
   /* ── User bubble — full width ── */
@@ -158,11 +159,15 @@
     padding: 3px 0 2px 2px;
   }
 
-  /* ── Input box wrapper — mỏng hơn và cố định ở dưới ── */
+  /* ── Input box wrapper — FIX: dùng fixed thay sticky để ghim cứng dưới màn hình iOS ── */
   .input-box-wrapper {
     padding: 4px 8px 6px;
-    position: sticky;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    /* env(safe-area-inset-bottom) = notch iPhone X+ */
+    position: fixed;
     bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 10;
     background: rgba(10, 10, 15, 0.95);
     backdrop-filter: blur(8px);

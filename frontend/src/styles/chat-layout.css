@@ -45,6 +45,13 @@
   background: rgba(10, 10, 15, 0.5);
   border-bottom: 1px solid var(--border);
   min-height: 40px;
+  /* Fix iOS Safari: dùng fixed thay sticky để đảm bảo ghim cứng */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  /* Khi dùng fixed, cần đảm bảo luôn nằm trên cùng */
+  contain: layout style;
 }
 
 .chat-header-left {
