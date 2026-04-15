@@ -18,5 +18,9 @@ backend/dist/
 backend/data/*.json
 backend/data/sessions/
 
+# Environment files
+backend/.env
+frontend/.env
+
 # Claude internals
-.claude/worktrees/
+.claude/
