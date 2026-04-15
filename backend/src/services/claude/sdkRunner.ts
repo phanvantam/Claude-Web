@@ -51,9 +51,7 @@ export async function runSDKQuery(
   };
 
   const isAbortRequested = (): boolean => {
-    return !!state.abortRequestedAt
-      || state.interruptReason === 'user_abort'
-      || state.interruptReason === 'linux_completion_token';
+    return !!state.abortRequestedAt || state.interruptReason === 'user_abort';
   };
 
   const shouldIgnoreEventAfterInterrupt = (eventType: string): boolean => {
@@ -64,10 +62,10 @@ export async function runSDKQuery(
       return eventType !== 'result';
     }
 
-    // Linux completion token: vẫn cho phép assistant + result để chốt nội dung cuối,
-    // nhưng bỏ qua các event khác để dừng nhanh.
+    // Linux completion token: KHÔNG bỏ qua event nào.
+    // Mục tiêu token chỉ để xử lý case treo không ra result, không làm mất metadata/event.
     if (state.interruptReason === 'linux_completion_token') {
-      return eventType !== 'assistant' && eventType !== 'result';
+      return false;
     }
 
     return false;
@@ -369,9 +367,11 @@ export async function runSDKQuery(
   //      → Tôn trọng thời gian chạy hợp lệ.
   //   3. Pending permission / Sub-agent: bỏ qua timer, chờ user phản hồi.
   let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+  let linuxCompletionInterruptTimer: ReturnType<typeof setTimeout> | null = null;
   let queryInstance: any = null;
   const STREAM_IDLE_TIMEOUT_MS = 300_000;    // 300 giây (5 phút) — model im lặng = treo
   const TOOL_EXEC_TIMEOUT_MS = 600_000;      // 10 phút — tool chạy lâu hợp lệ
+  const LINUX_COMPLETION_INTERRUPT_DELAY_MS = 2000;
 
   const resetSafetyTimer = () => {
     if (safetyTimer) clearTimeout(safetyTimer);
@@ -473,20 +473,37 @@ export async function runSDKQuery(
     return found;
   };
 
-  const interruptForLinuxCompletion = async (source: 'stream_event' | 'assistant') => {
+  const interruptForLinuxCompletion = (source: 'stream_event' | 'assistant') => {
     if (!queryInstance || state.linuxCompletionTokenDetected) return;
     state.linuxCompletionTokenDetected = true;
     state.interruptReason = 'linux_completion_token';
-    logger.info(`[Claude][${sessionId}] Linux completion token detected from ${source}, interrupting query`);
-    try {
-      await queryInstance.interrupt();
-    } catch (err: any) {
-      if (err?.message?.includes('Query closed') || err?.message?.includes('ProcessTransport')) {
-        logger.debug(`[Claude][${sessionId}] interrupt() after Linux completion token returned expected close error`);
-      } else {
-        logger.warn(`[Claude][${sessionId}] interrupt() after Linux completion token failed:`, err);
-      }
+
+    if (linuxCompletionInterruptTimer) {
+      clearTimeout(linuxCompletionInterruptTimer);
     }
+
+    logger.info(
+      `[Claude][${sessionId}] Linux completion token detected from ${source}, schedule interrupt in ${LINUX_COMPLETION_INTERRUPT_DELAY_MS}ms`,
+    );
+
+    linuxCompletionInterruptTimer = setTimeout(async () => {
+      if (!queryInstance || !state.isProcessing) {
+        linuxCompletionInterruptTimer = null;
+        return;
+      }
+      logger.info(`[Claude][${sessionId}] Linux completion delay elapsed, interrupting query`);
+      try {
+        await queryInstance.interrupt();
+      } catch (err: any) {
+        if (err?.message?.includes('Query closed') || err?.message?.includes('ProcessTransport')) {
+          logger.debug(`[Claude][${sessionId}] interrupt() after Linux completion token returned expected close error`);
+        } else {
+          logger.warn(`[Claude][${sessionId}] interrupt() after Linux completion token failed:`, err);
+        }
+      } finally {
+        linuxCompletionInterruptTimer = null;
+      }
+    }, LINUX_COMPLETION_INTERRUPT_DELAY_MS);
   };
 
   try {
@@ -703,7 +720,7 @@ export async function runSDKQuery(
             if (delta.type === 'text_delta' && delta.text) {
               const streamText = delta.text;
               if (hasLinuxCompletionTokenAcrossStreamChunks(streamText) || hasLinuxCompletionToken(streamText)) {
-                void interruptForLinuxCompletion('stream_event');
+                interruptForLinuxCompletion('stream_event');
               }
               // Text delta — stream từng chữ tới frontend (live preview)
               if (streamText) {
@@ -760,7 +777,7 @@ export async function runSDKQuery(
             if (apiMsg?.content && Array.isArray(apiMsg.content)) {
               for (const block of apiMsg.content) {
                 if (block.type === 'text' && typeof block.text === 'string' && hasLinuxCompletionToken(block.text)) {
-                  void interruptForLinuxCompletion('assistant');
+                  interruptForLinuxCompletion('assistant');
                 }
               }
             }
@@ -857,6 +874,10 @@ export async function runSDKQuery(
 
     // Dọn dẹp safety timer bất kể thoát kiểu gì
     if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
+    if (linuxCompletionInterruptTimer) {
+      clearTimeout(linuxCompletionInterruptTimer);
+      linuxCompletionInterruptTimer = null;
+    }
     clearInterval(saveInterval);
     state.abortController = undefined;
     state.queryInstance = undefined;

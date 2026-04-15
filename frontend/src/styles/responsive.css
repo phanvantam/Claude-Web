@@ -44,8 +44,10 @@
   /* ── Chat page fullscreen ── */
   .chat-page {
     height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
     /* Trừ mobile header */
     min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
   }
 
   /* ── Chat header — thu gọn và cố định ── */
