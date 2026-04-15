@@ -5,7 +5,6 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import { projectsApi, configApi, claudeApi, sessionsApi, planApi } from '../services/api';
-import type { PlanExecutionStatus } from '../services/api';
 import { socketService } from '../services/socket';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
