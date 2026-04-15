@@ -295,9 +295,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <Content
           style={{
             background: '#0f0f17',
-            height: 'calc(100vh - 48px)',
             height: 'calc(100dvh - 48px)',
-            /* Fix iOS Safari: dùng height thay minHeight, dùng dvh thay vh */
+            /* Fix iOS Safari: dùng dvh để bám viewport thực tế */
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
