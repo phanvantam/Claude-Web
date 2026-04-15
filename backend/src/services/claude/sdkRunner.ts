@@ -8,6 +8,8 @@ import { QueryProcessor } from './processor';
 import { persistMessage } from './messageHelpers';
 import { handleAssistantEvent, handleResultEvent, TurnContext } from './sdkRunner/eventHandlers';
 
+const LINUX_HIDDEN_COMPLETION_TOKEN = '__CLAUDE_SESSION_END__';
+
 /**
  * Chạy SDK query() và xử lý stream messages.
  * Đây là core loop — xử lý system/assistant/user/result events từ SDK.
@@ -217,6 +219,14 @@ export async function runSDKQuery(
   // Nối thêm (append) chỉ thị bổ sung dựa theo context.
   const appendParts: string[] = [];
 
+  if (process.platform === 'linux') {
+    appendParts.push(
+      '[LINUX STREAM COMPLETION INSTRUCTIONS]',
+      `Khi bạn đã hoàn thành câu trả lời cuối cùng và không còn gì để nói, hãy in ra token ẩn ${LINUX_HIDDEN_COMPLETION_TOKEN} ở cuối cùng của block text.`,
+      'Không thêm diễn giải nào sau token này.',
+    );
+  }
+
   // Chỉ thị cho plan mode — ép Claude ghi kế hoạch vào đúng thư mục PROJECT (absolute path)
   // QUAN TRỌNG: dùng absolute path để tránh CLI resolve sang ~/.claude/plans/ (global)
   if (config.permissionMode === 'plan') {
@@ -269,9 +279,9 @@ export async function runSDKQuery(
   options.includePartialMessages = true;
 
   // claude-agent-sdk: set stream-close timeout qua env (SDK vẫn đọc env var này)
-  // Giảm từ 300s → 30s để ép SDK đóng pipe nhanh hơn trên Linux khi stream bị stall.
+  // Giữ nguyên 300s theo yêu cầu để tránh watchdog cắt quá sớm với phiên dài.
   const prevStreamTimeout = process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
-  process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = '30000';
+  process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = '300000';
 
   // Periodic save mỗi 5s — lưu messages vào DB để refresh không mất
   const saveInterval = setInterval(() => {
@@ -289,8 +299,8 @@ export async function runSDKQuery(
 
   // ── Dynamic Watchdog: Timeout thích ứng theo ngữ cảnh ──
   // Thay vì dùng 1 con số timeout cứng, watchdog phân biệt 2 trạng thái:
-  //   1. Model đang sinh text/thinking (không có tool chạy): timeout NGẮN (10s)
-  //      → Phát hiện SSE Stall trên Linux cực nhanh.
+  //   1. Model đang sinh text/thinking (không có tool chạy): timeout STREAM_IDLE_TIMEOUT_MS (5 phút)
+  //      → Tránh cắt nhầm các phiên không phát stream liên tục.
   //   2. Tool đang thực thi (Bash, Read file lớn...): timeout DÀI (10 phút)
   //      → Tôn trọng thời gian chạy hợp lệ.
   //   3. Pending permission / Sub-agent: bỏ qua timer, chờ user phản hồi.
@@ -309,7 +319,7 @@ export async function runSDKQuery(
 
     // Khi đang chờ permission hoặc sub-agent → dùng timeout dài
     // Khi tool đang chạy → dùng timeout dài (tool Bash có thể mất vài phút)
-    // Khi model đang nói/nghĩ → dùng timeout ngắn (10s)
+    // Khi model đang nói/nghĩ → dùng STREAM_IDLE_TIMEOUT_MS
     const timeoutMs = (isPendingPermission || isToolRunning || isSubAgentRunning)
       ? TOOL_EXEC_TIMEOUT_MS
       : STREAM_IDLE_TIMEOUT_MS;
@@ -379,6 +389,29 @@ export async function runSDKQuery(
     state.partialAssistantContent = undefined;
   };
 
+  const hasLinuxCompletionToken = (text: string): boolean => {
+    return process.platform === 'linux' && text.includes(LINUX_HIDDEN_COMPLETION_TOKEN);
+  };
+
+  const sanitizeLinuxCompletionToken = (text: string): string => {
+    return text.replaceAll(LINUX_HIDDEN_COMPLETION_TOKEN, '');
+  };
+
+  const interruptForLinuxCompletion = async (source: 'stream_event' | 'assistant') => {
+    if (!queryInstance || state.linuxCompletionTokenDetected) return;
+    state.linuxCompletionTokenDetected = true;
+    logger.info(`[Claude][${sessionId}] Linux completion token detected from ${source}, interrupting query`);
+    try {
+      await queryInstance.interrupt();
+    } catch (err: any) {
+      if (err?.message?.includes('Query closed') || err?.message?.includes('ProcessTransport')) {
+        logger.debug(`[Claude][${sessionId}] interrupt() after Linux completion token returned expected close error`);
+      } else {
+        logger.warn(`[Claude][${sessionId}] interrupt() after Linux completion token failed:`, err);
+      }
+    }
+  };
+
   try {
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Starting sdk.query (string prompt)...`);
     // claude-agent-sdk: dùng string prompt trực tiếp, SDK tự đóng stdin → không treo pipe
@@ -391,13 +424,6 @@ export async function runSDKQuery(
 
     // Lưu query instance vào state — abortSession sẽ gọi interrupt() để kill CLI process
     state.queryInstance = queryInstance;
-
-    // Restore stream timeout env sau khi query bắt đầu (Query constructor đã bắt giá trị)
-    if (prevStreamTimeout !== undefined) {
-      process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = prevStreamTimeout;
-    } else {
-      delete process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
-    }
 
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] sdk.query initiated, starting for-await loop`);
 
@@ -578,12 +604,19 @@ export async function runSDKQuery(
             if (!delta) break;
 
             if (delta.type === 'text_delta' && delta.text) {
+              let streamText = delta.text;
+              if (hasLinuxCompletionToken(streamText)) {
+                streamText = sanitizeLinuxCompletionToken(streamText);
+                void interruptForLinuxCompletion('stream_event');
+              }
               // Text delta — stream từng chữ tới frontend (live preview)
-              emitter.emit('stream', {
-                sessionId,
-                content: delta.text,
-                messageId: `msg-${sessionId}-streaming`,
-              });
+              if (streamText) {
+                emitter.emit('stream', {
+                  sessionId,
+                  content: streamText,
+                  messageId: `msg-${sessionId}-streaming`,
+                });
+              }
             } else if (delta.type === 'input_json_delta' && ctx.activeStreamBlock?.type === 'tool_use') {
               // Tích lũy JSON input và gửi từng phần cho frontend live preview
               const chunk = delta.partial_json || '';
@@ -623,6 +656,17 @@ export async function runSDKQuery(
           // parent_tool_use_id: SDK trả trường này trên message nằm trong context của sub-agent.
           // Dùng nó thay vì tự theo dõi activeTaskToolId.
           const parentToolUseId = (sdkMsg as any).parent_tool_use_id || null;
+          if (!parentToolUseId) {
+            const apiMsg = (sdkMsg as any).message;
+            if (apiMsg?.content && Array.isArray(apiMsg.content)) {
+              for (const block of apiMsg.content) {
+                if (block.type === 'text' && typeof block.text === 'string' && hasLinuxCompletionToken(block.text)) {
+                  block.text = sanitizeLinuxCompletionToken(block.text);
+                  void interruptForLinuxCompletion('assistant');
+                }
+              }
+            }
+          }
           // Reset activeStreamBlock khi nhận assistant event hoàn chỉnh —
           // assistant event chứa dữ liệu đầy đủ của các blocks, không cần theo dõi delta nữa
           ctx.activeStreamBlock = null;
@@ -706,6 +750,13 @@ export async function runSDKQuery(
       throw err;
     }
   } finally {
+    // Restore env sau khi query đã kết thúc hoàn toàn để binary claude luôn nhận đúng timeout.
+    if (prevStreamTimeout !== undefined) {
+      process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = prevStreamTimeout;
+    } else {
+      delete process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
+    }
+
     // Dọn dẹp safety timer bất kể thoát kiểu gì
     if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
     clearInterval(saveInterval);
@@ -720,7 +771,19 @@ export async function runSDKQuery(
       state.activeSubAgent = undefined;
       clearPartialTurnInState();
       emitter.emit('status', { sessionId, status: 'idle' });
+
+      const forcedResultMsg = {
+        id: `result-${Date.now()}`,
+        role: 'system' as const,
+        content: 'Hoàn thành.',
+        timestamp: new Date().toISOString(),
+      };
+      state.messages.push(forcedResultMsg);
+      persistMessage(sessionId, forcedResultMsg);
+      emitter.emit('result', { sessionId, result: forcedResultMsg, data: { source: 'sdkRunner:finally' } });
     }
+
+    state.linuxCompletionTokenDetected = undefined;
   }
 }
 

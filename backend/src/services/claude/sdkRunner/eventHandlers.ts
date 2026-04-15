@@ -214,6 +214,11 @@ export function handleResultEvent(
   const costUsd = result.total_cost_usd || 0;
   const durationMs = result.duration_ms || 0;
   const usage = result.usage;
+  const hasTerminalMessage = !!result.is_error || costUsd > 0 || durationMs > 1000;
+
+  if (!hasTerminalMessage) {
+    logger.info(`[Claude][${sessionId}] Result without terminal system message (cost=${costUsd}, durationMs=${durationMs})`);
+  }
 
   // Cộng dồn chi phí vào sessions.total_cost
   if (costUsd > 0) {

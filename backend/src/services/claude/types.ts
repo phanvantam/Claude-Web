@@ -38,6 +38,8 @@ export interface ClaudeSessionState {
   partialToolCalls?: ToolCall[];
   /** Partial text content string đang tích lũy */
   partialAssistantContent?: string;
+  /** Linux completion token đã được phát hiện trong stream text */
+  linuxCompletionTokenDetected?: boolean;
 }
 
 /** Config truyền vào runSDKQuery — tách riêng để dùng chung */

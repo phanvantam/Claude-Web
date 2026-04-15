@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { WarningFilled } from '@ant-design/icons';
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
