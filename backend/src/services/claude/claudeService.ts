@@ -325,6 +325,13 @@ export class ClaudeService extends EventEmitter {
       state.abortController = undefined;
     }
 
+    // QUAN TRỌNG: set isProcessing=false NGAY để ngăn race với sendMessage().
+    // Nếu không, user gửi tin mới trước khi finally block chạy sẽ bị throw
+    // "Session is already processing" → không thể chat tiếp.
+    state.isProcessing = false;
+    state.abortRequestedAt = undefined;
+    state.interruptReason = undefined;
+
     // Đảm bảo frontend luôn nhận tín hiệu dừng ngay cả khi SDK result đến chậm.
     this.emit('status', { sessionId, status: 'idle' });
   }
