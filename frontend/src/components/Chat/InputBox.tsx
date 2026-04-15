@@ -401,7 +401,7 @@ const InputBox: React.FC<InputBoxProps> = ({
           trigger={['click']}
           placement="topLeft"
           overlayClassName="toolbar-dropdown"
-          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
+          styles={{ root: isMobile ? { width: '100%', left: 0, right: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Chọn model">
             <RobotOutlined />
@@ -449,7 +449,7 @@ const InputBox: React.FC<InputBoxProps> = ({
           trigger={['click']}
           placement="topLeft"
           overlayClassName="toolbar-dropdown"
-          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
+          styles={{ root: isMobile ? { width: '100%', left: 0, right: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Mức độ nỗ lực">
             <ThunderboltOutlined />
@@ -518,7 +518,7 @@ const InputBox: React.FC<InputBoxProps> = ({
           trigger={['click']}
           placement="topLeft"
           overlayClassName="toolbar-dropdown"
-          styles={{ root: isMobile ? { width: '100vw', left: 0 } : undefined }}
+          styles={{ root: isMobile ? { width: '100%', left: 0, right: 0 } : undefined }}
         >
           <button className="toolbar-btn" title="Chế độ quyền">
             <span>
@@ -639,7 +639,7 @@ const InputBox: React.FC<InputBoxProps> = ({
           trigger={['click']}
           placement="topLeft"
           overlayClassName="toolbar-dropdown todo-toolbar-dropdown"
-          styles={{ root: isMobile ? { width: '100vw', left: 0 } : { minWidth: 360 } }}
+          styles={{ root: isMobile ? { width: '100%', left: 0, right: 0 } : { minWidth: 360 } }}
         >
           <button
             className={`toolbar-btn${hasIncompleteTodos ? ' toolbar-btn-active' : ''}`}

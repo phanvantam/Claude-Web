@@ -118,6 +118,10 @@
   color: var(--accent-light);
   font-weight: 500;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .subagent-activity-summary {

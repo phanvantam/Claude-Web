@@ -17,6 +17,15 @@
 
 @media (max-width: 768px) {
 
+  /* Chặn scroll ngang toàn trang trên mobile */
+  html,
+  body,
+  #root,
+  .chat-page {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   /* ── Mobile header bar ── */
   .mobile-header {
     display: flex;
@@ -72,11 +81,17 @@
 
   .chat-header-left {
     max-width: 55%;
+    min-width: 0;
     padding: 3px 6px;
   }
 
   .chat-header-path {
     font-size: 11px;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
   }
 
   /* ── Chat window — bớt padding + dành chỗ cho input box fixed ── */
@@ -348,7 +363,7 @@
 
   /* ── Sub-agent timeline modal — fullscreen trên mobile ── */
   .dark-modal .ant-modal {
-    max-width: 100vw;
+    max-width: 100%;
     margin: 0;
     padding: 0;
   }
@@ -409,8 +424,11 @@
   /* ── Toolbar dropdown full-width trên mobile ── */
   /* overlayStyle set width/left, CSS này set min-width + item padding */
   .toolbar-dropdown {
-    min-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     border-radius: 0 !important;
+    overflow-x: hidden;
   }
 
   .toolbar-dropdown .ant-dropdown-menu {
@@ -421,6 +439,7 @@
   .toolbar-dropdown .ant-dropdown-menu-item {
     padding: 12px 20px !important;
     font-size: 14px !important;
+    overflow: hidden;
   }
 
   /* model-menu-item bên trong — tăng size cho dễ đọc/tap */
@@ -443,7 +462,11 @@
 
   /* Đảm bảo container không bị wrap */
   .toolbar-dropdown .model-menu-item {
+    display: flex;
+    align-items: center;
     flex-wrap: nowrap;
+    min-width: 0;
+    width: 100%;
     overflow: hidden;
   }
 }

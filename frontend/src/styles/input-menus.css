@@ -148,7 +148,10 @@
   font-weight: 500;
   color: var(--accent-light);
   white-space: nowrap;
-  min-width: 100px;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .slash-desc {
