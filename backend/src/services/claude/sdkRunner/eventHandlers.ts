@@ -248,7 +248,7 @@ export function handleResultEvent(
     const hasFinalizedTextBlock = ctx.turnBlocks.some(
       (b) => b.type === 'text' && typeof (b as any).text === 'string' && ((b as any).text as string).length > 0,
     );
-    const finalizedBlocks: ContentBlock[] = ctx.turnBlocks.length > 0 ? [...ctx.turnBlocks] : [...fallbackTextBlocks];
+    const finalizedBlocks: ContentBlock[] = [...ctx.turnBlocks];
     if (fallbackTextBlocks.length > 0 && !hasFinalizedTextBlock) {
       finalizedBlocks.push(...fallbackTextBlocks);
     }
@@ -263,7 +263,7 @@ export function handleResultEvent(
       blocks: finalizedBlocks,
       toolCalls: ctx.turnToolCalls.length > 0 ? ctx.turnToolCalls : undefined,
       timestamp: new Date().toISOString(),
-      model: ctx.turnModel,
+      model: ctx.turnModel || state.model,
       tokens: finalTokens,
       durationMs: durationMs > 0 ? durationMs : totalDurationMs,
       cost: costUsd > 0 ? costUsd : undefined,
