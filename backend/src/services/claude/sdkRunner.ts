@@ -56,8 +56,21 @@ export async function runSDKQuery(
       || state.interruptReason === 'linux_completion_token';
   };
 
-  const shouldIgnoreAfterAbort = (): boolean => {
-    return isAbortRequested() && state.isProcessing;
+  const shouldIgnoreEventAfterInterrupt = (eventType: string): boolean => {
+    if (!state.isProcessing) return false;
+
+    // User bấm Stop: chỉ giữ lại result để cleanup, bỏ qua mọi event khác.
+    if (state.interruptReason === 'user_abort' || !!state.abortRequestedAt) {
+      return eventType !== 'result';
+    }
+
+    // Linux completion token: vẫn cho phép assistant + result để chốt nội dung cuối,
+    // nhưng bỏ qua các event khác để dừng nhanh.
+    if (state.interruptReason === 'linux_completion_token') {
+      return eventType !== 'assistant' && eventType !== 'result';
+    }
+
+    return false;
   };
 
   // ── allowedTools: LUÔN truyền mỗi lần query ──
@@ -300,8 +313,8 @@ export async function runSDKQuery(
 
   const completionTokenUserInstruction = [
     '[SESSION END KEY REQUIREMENT]',
-    `Khi đã hoàn tất phản hồi cuối cùng, PHẢI in chính xác key sau ở CUỐI CÙNG: ${LINUX_HIDDEN_COMPLETION_TOKEN}`,
-    'Không dùng backticks/markdown cho key này và không có ký tự nào sau key.',
+    `When you have fully completed your final answer, you MUST print this exact key at the VERY END of your response: ${LINUX_HIDDEN_COMPLETION_TOKEN}`,
+    'Do not wrap this key in backticks/markdown, and do not output any characters after the key.',
   ].join('\n');
   const effectivePrompt = ENABLE_CLAUDE_SESSION_END
     ? `${message}\n\n${completionTokenUserInstruction}`
@@ -514,10 +527,9 @@ export async function runSDKQuery(
       const type = sdkMsg.type as string;
       logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] SDK Event #${eventCount}: ${type}`);
 
-      // Sau khi user abort, bỏ qua mọi event trung gian để tránh stream lại lên UI.
-      // Chỉ giữ lại result để cleanup và kết thúc vòng đời query.
-      if (shouldIgnoreAfterAbort() && type !== 'result') {
-        logger.debug(`[Claude][${sessionId}] Ignore ${type} after user abort request`);
+      // Sau khi interrupt, lọc event theo ngữ cảnh để vừa dừng nhanh vừa không mất dữ liệu.
+      if (shouldIgnoreEventAfterInterrupt(type)) {
+        logger.debug(`[Claude][${sessionId}] Ignore ${type} after interrupt reason=${state.interruptReason}`);
         continue;
       }
 
