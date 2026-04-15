@@ -191,6 +191,9 @@ export function useChat(): UseChatReturn {
     setStatus('idle');
     setSessionId(null);
     sessionIdRef.current = null;
+    setSessionEffortLevelState(undefined);
+    setSessionPermissionModeState(undefined);
+    setSessionModel(undefined);
     setHasMoreMessages(false);
     nextCursorRef.current = null;
     // Đánh dấu phiên đang chờ kết nối — filter event từ phiên cũ

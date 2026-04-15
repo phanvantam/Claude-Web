@@ -305,6 +305,8 @@ export class ClaudeService extends EventEmitter {
     const state = this.sessions.get(sessionId);
     if (!state) return;
 
+    state.interruptReason = 'user_abort';
+
     // Gọi interrupt() trên SDK query instance — đây mới thực sự kill CLI process.
     // AbortController chỉ signal cho canUseTool/pending permission, không dừng được tiến trình.
     if (state.queryInstance) {

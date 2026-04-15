@@ -263,13 +263,20 @@ export function handleResultEvent(
   const isAbort = result.terminal_reason === 'aborted_streaming' ||
     (Array.isArray(result.errors) && result.errors.some((e: any) => String(e).includes('Request was aborted')));
 
+  const abortReasonLabel = state.interruptReason === 'user_abort'
+    ? 'Đã dừng theo thao tác bấm Dừng của người dùng.'
+    : state.interruptReason === 'watchdog_timeout'
+      ? 'Đã dừng do hết thời gian chờ (timeout) vì không còn dữ liệu mới.'
+      : state.interruptReason === 'linux_completion_token'
+        ? 'Đã dừng khi phát hiện tín hiệu kết thúc phản hồi trên Linux.'
+        : 'Đã dừng do tiến trình bị ngắt.';
+
   // System messages cho error / completion / abort
   if (isAbort) {
-    // Trường hợp người dùng chủ động nhấn Dừng
     const abortMsg: ChatMessage = {
       id: `result-${Date.now()}`,
       role: 'system',
-      content: 'Đã dừng theo yêu cầu của người dùng.',
+      content: abortReasonLabel,
       timestamp: new Date().toISOString(),
     };
     state.messages.push(abortMsg);
@@ -330,6 +337,7 @@ export function handleResultEvent(
   state.partialAssistantBlocks = undefined;
   state.partialToolCalls = undefined;
   state.partialAssistantContent = undefined;
+  state.interruptReason = undefined;
   emitter.emit('status', { sessionId, status: 'idle' });
 
   // Interrupt stream sau khi xong — cleanup resources (claude-agent-sdk)

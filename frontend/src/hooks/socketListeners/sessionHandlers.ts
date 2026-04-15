@@ -51,12 +51,13 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
   } = deps;
 
   const rebuildTodoListsFromMessages = (messages: ChatMessage[], sessionId?: string) => {
-    const lists: import('../../types').TodoList[] = [];
     const dismissed = new Set<string>(
       sessionId
         ? JSON.parse(localStorage.getItem(`dismissedTodos:${sessionId}`) || '[]')
         : []
     );
+
+    let latest: import('../../types').TodoList | null = null;
 
     for (const msg of messages) {
       if (msg.role !== 'assistant' || !msg.blocks) continue;
@@ -72,18 +73,18 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
           : first.length <= 40
             ? first
             : `${first.slice(0, Math.max(first.slice(0, 40).lastIndexOf(' '), 20)).trim()}...`;
-        lists.push({
+        latest = {
           id: listId,
           label,
           todos,
           timestamp: msg.timestamp,
           messageId: msg.id,
           toolCallId: block.tool.id,
-        });
+        };
       }
     }
 
-    return lists;
+    return latest ? [latest] : [];
   };
 
   // ─── Session lifecycle ──────────────────────────────────────────────

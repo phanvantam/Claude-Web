@@ -59,15 +59,7 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     );
     if (dismissed.has(next.id)) return;
 
-    setTodoLists(prev => {
-      const existingIndex = next.toolCallId
-        ? prev.findIndex(list => list.toolCallId === next.toolCallId)
-        : -1;
-      if (existingIndex === -1) return [...prev, next];
-      const updated = [...prev];
-      updated[existingIndex] = { ...updated[existingIndex], ...next, id: updated[existingIndex].id };
-      return updated;
-    });
+    setTodoLists([next]);
   };
 
 

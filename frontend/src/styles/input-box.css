@@ -287,10 +287,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 600;
+  gap: 8px;
+}
+
+.todo-menu-header-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.todo-menu-header-title {
   font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .todo-menu-count {
@@ -313,7 +326,7 @@
 /* Group header for each todo list */
 .todo-group-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
@@ -325,14 +338,24 @@
 .todo-group-main {
   min-width: 0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.todo-label-item {
+  padding: 6px 12px 2px;
 }
 
 .todo-group-label {
   display: block;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
 }
 
 .todo-group-meta {

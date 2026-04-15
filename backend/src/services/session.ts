@@ -2,7 +2,7 @@ import db from './db';
 import type { ChatSession, ChatMessage } from '../types';
 
 // Số tin nhắn tải mỗi lần cho phân trang
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 5;
 
 /**
  * Lấy toàn bộ sessions, sắp xếp theo updatedAt giảm dần.

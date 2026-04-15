@@ -316,13 +316,11 @@ const InputBox: React.FC<InputBoxProps> = ({
 
   const selectedModelKeys = matchedModel ? [matchedModel.key] : [currentModel];
 
-  const sortedTodoLists = useMemo(() => {
-    return [...todoLists].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [todoLists]);
+  const latestTodoList = todoLists[0];
 
-  const hasIncompleteTodos = sortedTodoLists.some(list =>
-    list.todos.some(todo => todo.status !== 'completed')
-  );
+  const hasIncompleteTodos = latestTodoList
+    ? latestTodoList.todos.some(todo => todo.status !== 'completed')
+    : false;
 
   type MenuItem = NonNullable<MenuProps['items']>[number];
 
@@ -565,88 +563,97 @@ const InputBox: React.FC<InputBoxProps> = ({
 
         <Dropdown
           menu={{
-            items: [
-              {
+            items: (() => {
+              if (!latestTodoList) {
+                return [
+                  {
+                    key: '__todo_header__',
+                    label: (
+                      <div className="todo-menu-header-wrap">
+                        <div className="todo-menu-header">
+                          <span className="todo-menu-header-title">Todo hiện tại</span>
+                        </div>
+                      </div>
+                    ),
+                    disabled: true,
+                  },
+                  {
+                    key: '__todo_empty__',
+                    label: <span className="todo-menu-empty">Chưa có danh sách todo nào</span>,
+                    disabled: true,
+                  },
+                ] as MenuItem[];
+              }
+
+              const list = latestTodoList;
+              const inProgress = list.todos.filter(t => t.status === 'in_progress').length;
+              const pending = list.todos.filter(t => (t.status || 'pending') === 'pending').length;
+              const completed = list.todos.filter(t => t.status === 'completed').length;
+              const ts = new Date(list.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+              const header: MenuItem = {
                 key: '__todo_header__',
                 label: (
                   <div className="todo-menu-header-wrap">
                     <div className="todo-menu-header">
-                      <span>Danh sách Todo</span>
-                      <span className="todo-menu-count">{sortedTodoLists.length}</span>
+                      <div className="todo-menu-header-main">
+                        <span className="todo-menu-header-title">Todo hiện tại</span>
+                        <div className="todo-group-meta">
+                          <span className="todo-group-time">{ts}</span>
+                          <div className="todo-group-badges">
+                            {inProgress > 0 && <span className="todo-menu-badge active" title={`Đang ${inProgress}`}><ThunderboltOutlined /> {inProgress}</span>}
+                            {pending > 0 && <span className="todo-menu-badge pending" title={`Chờ ${pending}`}><CarryOutOutlined /> {pending}</span>}
+                            {completed > 0 && <span className="todo-menu-badge done" title={`Xong ${completed}`}><CheckSquareOutlined /> {completed}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="todo-group-remove"
+                        title="Xóa danh sách todo"
+                        onClick={(e) => handleRemoveTodoList(e, list.id)}
+                      >
+                        <CloseOutlined />
+                      </button>
                     </div>
                   </div>
                 ),
                 disabled: true,
-              },
-              ...(sortedTodoLists.length === 0
-                ? [{
-                    key: '__todo_empty__',
-                    label: <span className="todo-menu-empty">Chưa có danh sách todo nào</span>,
-                    disabled: true,
-                  }]
-                : sortedTodoLists.flatMap((list, listIndex) => {
-                    const inProgress = list.todos.filter(t => t.status === 'in_progress').length;
-                    const pending = list.todos.filter(t => (t.status || 'pending') === 'pending').length;
-                    const completed = list.todos.filter(t => t.status === 'completed').length;
-                    const ts = new Date(list.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              };
 
-                    const groupHeader: MenuItem = {
-                      key: `__todo_group_${list.id}`,
-                      label: (
-                        <div className="todo-group-header">
-                          <div className="todo-group-main">
-                            <span className="todo-group-label">{list.label}</span>
-                            <div className="todo-group-meta">
-                              <span className="todo-group-time">{ts}</span>
-                              <div className="todo-group-badges">
-                                {inProgress > 0 && <span className="todo-menu-badge active" title={`Đang ${inProgress}`}><ThunderboltOutlined /> {inProgress}</span>}
-                                {pending > 0 && <span className="todo-menu-badge pending" title={`Chờ ${pending}`}><CarryOutOutlined /> {pending}</span>}
-                                {completed > 0 && <span className="todo-menu-badge done" title={`Xong ${completed}`}><CheckSquareOutlined /> {completed}</span>}
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="todo-group-remove"
-                            title="Xóa danh sách todo"
-                            onClick={(e) => handleRemoveTodoList(e, list.id)}
-                          >
-                            <CloseOutlined />
-                          </button>
-                        </div>
-                      ),
-                      disabled: true,
-                    };
+              const labelItem: MenuItem = {
+                key: '__todo_label__',
+                label: (
+                  <div className="todo-label-item">
+                    <span className="todo-group-label">{list.label}</span>
+                  </div>
+                ),
+                disabled: true,
+              };
 
-                    const todoItems: MenuItem[] = list.todos.map((todo, todoIdx) => ({
-                      key: `todo-${listIndex}-${todoIdx}`,
-                      label: (
-                        <div className={`todo-menu-item ${todo.status === 'completed' ? 'done' : ''} ${todo.status === 'in_progress' ? 'active' : ''}`}>
-                          <span className="todo-status-icon">
-                            {todo.status === 'completed'
-                              ? '✓'
-                              : todo.status === 'in_progress'
-                                ? <LoadingOutlined spin />
-                                : '•'}
-                          </span>
-                          <span className="todo-content">
-                            {todo.status === 'in_progress' && todo.activeForm
-                              ? todo.activeForm
-                              : todo.content || ''}
-                          </span>
-                        </div>
-                      ),
-                      disabled: true,
-                    }));
+              const todoItems: MenuItem[] = list.todos.map((todo, todoIdx) => ({
+                key: `todo-${todoIdx}`,
+                label: (
+                  <div className={`todo-menu-item ${todo.status === 'completed' ? 'done' : ''} ${todo.status === 'in_progress' ? 'active' : ''}`}>
+                    <span className="todo-status-icon">
+                      {todo.status === 'completed'
+                        ? '✓'
+                        : todo.status === 'in_progress'
+                          ? <LoadingOutlined spin />
+                          : '•'}
+                    </span>
+                    <span className="todo-content">
+                      {todo.status === 'in_progress' && todo.activeForm
+                        ? todo.activeForm
+                        : todo.content || ''}
+                    </span>
+                  </div>
+                ),
+                disabled: true,
+              }));
 
-                    const items: MenuItem[] = [groupHeader, ...todoItems];
-                    if (listIndex < sortedTodoLists.length - 1) {
-                      items.push({ key: `__sep_${list.id}`, type: 'divider' as const });
-                    }
-
-                    return items;
-                  })),
-            ],
+              return [header, labelItem, ...todoItems];
+            })(),
           }}
           trigger={['click']}
           placement="topLeft"
@@ -659,7 +666,7 @@ const InputBox: React.FC<InputBoxProps> = ({
             type="button"
           >
             <CheckSquareOutlined />
-            <span>Todo{sortedTodoLists.length > 0 ? ` (${sortedTodoLists.length})` : ''}</span>
+            <span>Todo</span>
           </button>
         </Dropdown>
       </div>

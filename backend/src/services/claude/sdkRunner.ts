@@ -223,8 +223,8 @@ export async function runSDKQuery(
   if (process.platform === 'linux') {
     appendParts.push(
       '[LINUX STREAM COMPLETION INSTRUCTIONS]',
-      `Khi bạn đã hoàn thành câu trả lời cuối cùng và không còn gì để nói, hãy in ra token ẩn ${LINUX_HIDDEN_COMPLETION_TOKEN} ở cuối cùng của block text.`,
-      'Không thêm diễn giải nào sau token này.',
+      `BẮT BUỘC: Chỉ khi đã hoàn tất TOÀN BỘ câu trả lời cuối cùng của lượt hiện tại, hãy thêm chính xác token ${LINUX_HIDDEN_COMPLETION_TOKEN} ở CUỐI CÙNG của text cuối (không backticks, không markdown).`,
+      'Không được thêm token này ở các text trung gian, và không có ký tự nào sau token.',
     );
   }
 
@@ -338,6 +338,8 @@ export async function runSDKQuery(
         : `Không nhận được dữ liệu sau ${STREAM_IDLE_TIMEOUT_MS / 1000}s (SSE Stall?)`;
       logger.warn(`[Claude][${sessionId}] Dynamic Watchdog triggered: ${reason}`);
 
+      state.interruptReason = 'watchdog_timeout';
+
       try {
         if (queryInstance) await queryInstance.interrupt();
       } catch (e: any) {
@@ -401,6 +403,7 @@ export async function runSDKQuery(
   const interruptForLinuxCompletion = async (source: 'stream_event' | 'assistant') => {
     if (!queryInstance || state.linuxCompletionTokenDetected) return;
     state.linuxCompletionTokenDetected = true;
+    state.interruptReason = 'linux_completion_token';
     logger.info(`[Claude][${sessionId}] Linux completion token detected from ${source}, interrupting query`);
     try {
       await queryInstance.interrupt();
