@@ -38,6 +38,7 @@ export interface TurnContext {
     accumulatedInput?: string;
   } | null;
   hasReceivedStreamEvents: boolean;
+  streamedMainTextChunks: string[];
 }
 
 /**
@@ -234,17 +235,32 @@ export function handleResultEvent(
   }
 
   // ── Finalize 1 message duy nhất từ TẤT CẢ accumulated blocks ──
-  if (ctx.turnBlocks.length > 0) {
+  if (ctx.turnBlocks.length > 0 || ctx.streamedMainTextChunks.length > 0) {
     const totalDurationMs = Date.now() - ctx.turnStartedAt;
     const finalTokens = usage && (usage.input_tokens > 0 || usage.output_tokens > 0)
       ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
       : (ctx.turnTokensTotal.input > 0 || ctx.turnTokensTotal.output > 0) ? ctx.turnTokensTotal : undefined;
 
+    const fallbackStreamedText = ctx.streamedMainTextChunks.join('');
+    const fallbackTextBlocks: ContentBlock[] = fallbackStreamedText
+      ? [{ type: 'text', text: fallbackStreamedText }]
+      : [];
+    const hasFinalizedTextBlock = ctx.turnBlocks.some(
+      (b) => b.type === 'text' && typeof (b as any).text === 'string' && ((b as any).text as string).length > 0,
+    );
+    const finalizedBlocks: ContentBlock[] = ctx.turnBlocks.length > 0 ? [...ctx.turnBlocks] : [...fallbackTextBlocks];
+    if (fallbackTextBlocks.length > 0 && !hasFinalizedTextBlock) {
+      finalizedBlocks.push(...fallbackTextBlocks);
+    }
+    const finalizedContent = ctx.turnTextParts.length > 0
+      ? ctx.turnTextParts.join('\n')
+      : fallbackStreamedText;
+
     const chatMsg: ChatMessage = {
       id: ctx.turnMsgId,
       role: 'assistant',
-      content: ctx.turnTextParts.join('\n'),
-      blocks: ctx.turnBlocks,
+      content: finalizedContent,
+      blocks: finalizedBlocks,
       toolCalls: ctx.turnToolCalls.length > 0 ? ctx.turnToolCalls : undefined,
       timestamp: new Date().toISOString(),
       model: ctx.turnModel,
@@ -253,7 +269,7 @@ export function handleResultEvent(
       cost: costUsd > 0 ? costUsd : undefined,
     };
     finalizeAssistantMessage(sessionId, chatMsg, state, emitter);
-    logger.info(`[Claude][${sessionId}] Finalized: ${ctx.turnBlocks.length} blocks, ${ctx.turnToolCalls.length} tools`);
+    logger.info(`[Claude][${sessionId}] Finalized: blocks=${finalizedBlocks.length} (turnBlocks=${ctx.turnBlocks.length}, fallbackStreamedBlocks=${fallbackTextBlocks.length}), tools=${ctx.turnToolCalls.length}`);
   }
 
   // Phân tích xem có phải là lỗi do người dùng chủ động dừng (Stop) hay không

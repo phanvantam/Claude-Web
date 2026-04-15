@@ -407,6 +407,7 @@ export async function runSDKQuery(
     turnBlocks: [],
     turnToolCalls: [],
     turnTextParts: [],
+    streamedMainTextChunks: [],
     turnMsgId: `turn-${Date.now()}`,
     turnModel: undefined,
     turnTokensTotal: { input: 0, output: 0 },
@@ -692,6 +693,7 @@ export async function runSDKQuery(
               }
               // Text delta — stream từng chữ tới frontend (live preview)
               if (streamText) {
+                ctx.streamedMainTextChunks.push(streamText);
                 emitter.emit('stream', {
                   sessionId,
                   content: streamText,
