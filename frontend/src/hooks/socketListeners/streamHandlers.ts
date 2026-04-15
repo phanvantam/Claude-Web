@@ -16,11 +16,62 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
   const {
     setStreamingContent,
     setStreamingBlocks,
+    setTodoLists,
     streamingRef,
     sessionIdRef,
   } = deps;
 
-  // Text stream — tích lũy nội dung text
+  const readTodosFromInput = (input: Record<string, unknown> | undefined) => {
+    return (input?.todos || input?.items || []) as import('../../types').TodoItem[];
+  };
+
+  const buildTodoList = (
+    todos: import('../../types').TodoItem[],
+    opts?: { toolCallId?: string; timestamp?: string; messageId?: string }
+  ): import('../../types').TodoList => {
+    const first = todos[0]?.content || todos[0]?.activeForm || '';
+    const label = !first
+      ? 'Task List'
+      : first.length <= 40
+        ? first
+        : `${first.slice(0, Math.max(first.slice(0, 40).lastIndexOf(' '), 20)).trim()}...`;
+
+    return {
+      id: opts?.toolCallId || `todo-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      label,
+      todos,
+      timestamp: opts?.timestamp || new Date().toISOString(),
+      messageId: opts?.messageId,
+      toolCallId: opts?.toolCallId,
+    };
+  };
+
+  const upsertTodoList = (
+    todos: import('../../types').TodoItem[],
+    opts?: { toolCallId?: string; timestamp?: string; messageId?: string }
+  ) => {
+    if (todos.length === 0) return;
+    const next = buildTodoList(todos, opts);
+
+    const sid = sessionIdRef.current;
+    const dismissed = new Set<string>(
+      sid ? JSON.parse(localStorage.getItem(`dismissedTodos:${sid}`) || '[]') : []
+    );
+    if (dismissed.has(next.id)) return;
+
+    setTodoLists(prev => {
+      const existingIndex = next.toolCallId
+        ? prev.findIndex(list => list.toolCallId === next.toolCallId)
+        : -1;
+      if (existingIndex === -1) return [...prev, next];
+      const updated = [...prev];
+      updated[existingIndex] = { ...updated[existingIndex], ...next, id: updated[existingIndex].id };
+      return updated;
+    });
+  };
+
+
+  // Text stream
   socket.on('chat:stream', (data: { sessionId: string; content: string }) => {
     if (data.sessionId !== sessionIdRef.current) return;
     streamingRef.current += data.content;
@@ -40,6 +91,9 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
   socket.on('chat:stream:tool', (data: { sessionId: string; tool: { id: string; name: string; input: Record<string, unknown> } }) => {
     if (data.sessionId !== sessionIdRef.current) return;
     setStreamingBlocks(prev => [...prev, { type: 'tool_use', tool: { ...data.tool } }]);
+    if (data.tool.name === 'TodoWrite') {
+      upsertTodoList(readTodosFromInput(data.tool.input), { toolCallId: data.tool.id });
+    }
   });
 
   // Partial message placeholder — hiện tại không xử lý
@@ -120,6 +174,8 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
     sessionId: string;
     blockIndex: number;
     blockType: string;
+    toolName?: string;
+    streamingInput?: string;
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
     if (data.blockType === 'tool_use') {
@@ -131,9 +187,10 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
         const updated = [...prev];
         const tool = last.tool;
         let parsedInput = tool.input;
-        if ((tool as any).streamingInput) {
+        const rawInput = (tool as any).streamingInput;
+        if (rawInput) {
           try {
-            parsedInput = JSON.parse((tool as any).streamingInput);
+            parsedInput = JSON.parse(rawInput);
           } catch {
             // no-op
           }
@@ -155,6 +212,19 @@ export function registerStreamHandlers(socket: Socket, deps: SocketHandlerDeps):
   }) => {
     if (data.sessionId !== sessionIdRef.current) return;
     setStreamingBlocks(data.blocks);
+
+    // Extract latest TodoWrite block và upsert vào todoLists
+    const todoBlocks = data.blocks.filter(b =>
+      b.type === 'tool_use' && b.tool?.name === 'TodoWrite'
+    );
+
+    if (todoBlocks.length > 0) {
+      const latestTodoBlock = todoBlocks[todoBlocks.length - 1];
+      if (latestTodoBlock.type === 'tool_use') {
+        const todos = readTodosFromInput(latestTodoBlock.tool.input);
+        upsertTodoList(todos, { toolCallId: latestTodoBlock.tool.id });
+      }
+    }
 
     // Đồng bộ streamingRef với text block cuối — tránh text bị append sai
     // khi chat:stream event tiếp theo đến sau stream:blocks

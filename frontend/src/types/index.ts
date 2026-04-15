@@ -115,3 +115,19 @@ export interface SubAgentTimelineEvent {
   toolInput?: Record<string, unknown>;
   isError?: boolean;
 }
+
+// Todo list types
+export interface TodoItem {
+  content?: string;
+  activeForm?: string;
+  status?: 'pending' | 'in_progress' | 'completed';
+}
+
+export interface TodoList {
+  id: string;           // Unique ID: `todo-${timestamp}-${random}`
+  label: string;        // Auto-generated from first todo item
+  todos: TodoItem[];
+  timestamp: string;    // ISO timestamp when list was created
+  messageId?: string;   // Source message ID for history tracking
+  toolCallId?: string;  // Source tool call ID
+}

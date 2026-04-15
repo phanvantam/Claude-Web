@@ -5,7 +5,7 @@
  */
 
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { ChatMessage, ContentBlock } from '../../types';
+import type { ChatMessage, ContentBlock, TodoList } from '../../types';
 import type {
   PendingPermission,
   PendingAskUser,
@@ -55,6 +55,7 @@ export interface SocketHandlerDeps {
   setActiveSubAgent: Dispatch<SetStateAction<ActiveSubAgent | null>>;
   setPendingAskUser: Dispatch<SetStateAction<PendingAskUser | null>>;
   setMcpRuntimeStatus: Dispatch<SetStateAction<McpRuntimeServer[]>>;
+  setTodoLists: Dispatch<SetStateAction<TodoList[]>>;
   streamingRef: MutableRefObject<string>;
   sessionIdRef: MutableRefObject<string | null>;
   pendingSessionIdRef: MutableRefObject<string | null>;

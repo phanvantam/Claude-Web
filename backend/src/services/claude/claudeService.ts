@@ -346,6 +346,12 @@ export class ClaudeService extends EventEmitter {
     updateSession(sessionId, { effortLevel });
   }
 
+  setSessionModel(sessionId: string, model?: string): void {
+    const state = this.sessions.get(sessionId);
+    if (state) state.model = model;
+    updateSession(sessionId, { model });
+  }
+
   setSessionPermissionMode(sessionId: string, permissionMode?: string): void {
     const state = this.sessions.get(sessionId);
     if (state) state.permissionMode = permissionMode;

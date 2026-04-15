@@ -243,6 +243,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Guard: chỉ cho phép load thêm khi user thực sự cuộn lên, không phải do auto-scroll
   const userScrolledRef = useRef(false);
   const loadCooldownRef = useRef(false);
+  // Track which messages have expanded intermediate blocks
+  const [expandedIntermediateByMessageId, setExpandedIntermediateByMessageId] = useState<Record<string, boolean>>({});
 
   // Cuộn xuống cuối khi có message mới (không cuộn khi đang load cũ)
   useEffect(() => {
@@ -297,6 +299,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   };
 
+  const formatTokens = (n: number): string => {
+    return n.toLocaleString('en-US');
+  };
+
+  const isIntermediateBlock = (block: ContentBlock): boolean => {
+    return block.type === 'thinking'
+      || block.type === 'tool_use'
+      || block.type === 'subagent_result';
+  };
+
+  const splitAssistantBlocks = (blocks: ContentBlock[]) => {
+    const intermediate: ContentBlock[] = [];
+    const final: ContentBlock[] = [];
+
+    for (const block of blocks) {
+      if (block.type === 'tool_use' && (block as any).tool?.name === 'TodoWrite') {
+        continue;
+      }
+
+      if (isIntermediateBlock(block)) {
+        intermediate.push(block);
+      } else {
+        final.push(block);
+      }
+    }
+
+    return { intermediate, final };
+  };
+
   /** Render assistant message blocks dạng timeline dọc */
   const renderAssistantBlocks = (msg: ChatMessage) => {
     const blocks = msg.blocks || [];
@@ -316,7 +347,43 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return renderBlockList(fallback);
     }
 
-    return renderBlockList(blocks);
+    const { intermediate, final } = splitAssistantBlocks(blocks);
+    const isExpanded = expandedIntermediateByMessageId[msg.id] || false;
+
+    if (final.length === 0) {
+      return renderBlockList(blocks);
+    }
+
+    return (
+      <>
+        {intermediate.length > 0 && isExpanded && (
+          <div className="tl-intermediate-section">
+            {renderBlockList(intermediate)}
+          </div>
+        )}
+
+        {intermediate.length > 0 && (
+          <div className="tl-block-row">
+            <div className="tl-dot dot-toggle" />
+            <div className="tl-block-content">
+              <button
+                type="button"
+                className="tl-toggle-intermediate"
+                onClick={() => setExpandedIntermediateByMessageId(prev => ({
+                  ...prev,
+                  [msg.id]: !isExpanded,
+                }))}
+              >
+                {isExpanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
+                {' '}{isExpanded ? 'Ẩn' : 'Xem'} chi tiết ({intermediate.length} bước)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {renderBlockList(final)}
+      </>
+    );
   };
 
   /**
@@ -365,6 +432,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {blocks.map((block, i) => {
           const isLast = i === blocks.length - 1;
           const dot = getBlockDot(block, isStreaming, isLast);
+
+          // Skip TodoWrite — hiển thị ở toolbar dropdown thay vì timeline
+          if (block.type === 'tool_use' && (block as any).tool?.name === 'TodoWrite') {
+            return null;
+          }
 
           if (block.type === 'thinking') {
             return (
@@ -508,7 +580,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
                 {msg.tokens && (msg.tokens.input + msg.tokens.output) > 0 && (
                   <span className="tl-tokens">
-                    {msg.tokens.input + msg.tokens.output} tokens
+                    {formatTokens(msg.tokens.input + msg.tokens.output)} tokens
                   </span>
                 )}
                 {msg.cost !== undefined && msg.cost > 0 && (

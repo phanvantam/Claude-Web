@@ -1,4 +1,5 @@
 import type { PendingPermission, PendingAskUser } from '../../../hooks/useChat';
+import type { TodoList } from '../../../types';
 
 export type AgentInfo = {
   name: string;
@@ -25,4 +26,8 @@ export interface InputBoxProps {
   pendingAskUser?: PendingAskUser | null;
   onRespondAskUser?: (answer: string) => void;
   projectId?: string;
+  /** Multi-list todo lists (append-only, each with label + items) */
+  todoLists?: TodoList[];
+  /** Xóa một todo list khỏi danh sách */
+  onRemoveTodoList?: (listId: string) => void;
 }

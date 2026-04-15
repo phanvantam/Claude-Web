@@ -100,6 +100,19 @@ export function registerSocketHandlers(io: Server, socket: Socket): void {
     }
   });
 
+  socket.on('session:setModel', (data: { sessionId: string; model?: string }) => {
+    try {
+      claudeService.setSessionModel(data.sessionId, data.model);
+      io.to(data.sessionId).emit('session:modelChanged', {
+        sessionId: data.sessionId,
+        model: data.model,
+      });
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      socket.emit('chat:error', { sessionId: data.sessionId, error });
+    }
+  });
+
   socket.on('session:setPermissionMode', (data: { sessionId: string; permissionMode?: string }) => {
     try {
       claudeService.setSessionPermissionMode(data.sessionId, data.permissionMode);

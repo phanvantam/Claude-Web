@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { socketService } from '../services/socket';
 import { sessionsApi } from '../services/api';
 import { useChatSocketListeners } from './useChatSocketListeners';
-import type { ChatMessage, ContentBlock } from '../types';
+import type { ChatMessage, ContentBlock, TodoList } from '../types';
 
 /** Thông tin tool đang chờ permission từ người dùng */
 export interface PendingPermission {
@@ -97,6 +97,10 @@ interface UseChatReturn {
   mcpRuntimeStatus: McpRuntimeServer[];
   /** Làm mới MCP — gửi lại config cho session đang chạy */
   refreshMcp: () => void;
+  /** Tất cả todo lists trong session (append-only, không auto-clear) */
+  todoLists: TodoList[];
+  /** Xóa một todo list khỏi UI theo id */
+  removeTodoList: (listId: string) => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -128,6 +132,7 @@ export function useChat(): UseChatReturn {
   const [pendingAskUser, setPendingAskUser] = useState<PendingAskUser | null>(null);
   /** Runtime MCP status — cập nhật mỗi lần SDK gửi init event */
   const [mcpRuntimeStatus, setMcpRuntimeStatus] = useState<McpRuntimeServer[]>([]);
+  const [todoLists, setTodoLists] = useState<TodoList[]>([]);
   const streamingRef = useRef('');
   // Giữ ref session ID để reconnect handler luôn có giá trị mới nhất
   const sessionIdRef = useRef<string | null>(null);
@@ -164,6 +169,7 @@ export function useChat(): UseChatReturn {
     setActiveSubAgent,
     setPendingAskUser,
     setMcpRuntimeStatus,
+    setTodoLists,
     streamingRef,
     sessionIdRef,
     pendingSessionIdRef,
@@ -303,10 +309,6 @@ export function useChat(): UseChatReturn {
   }, []);
 
   /**
-   * Phản hồi permission request: allow hoặc deny tool use.
-   * Gửi kết quả về backend qua socket, SDK sẽ tiếp tục xử lý.
-   */
-  /**
    * Yêu cầu backend nén context hội thoại hiện tại.
    * Backend sẽ gọi Claude tóm tắt → tạo session mới → emit session:compacted.
    */
@@ -346,6 +348,27 @@ export function useChat(): UseChatReturn {
     socket.emit('mcp:refresh', { sessionId: sessionIdRef.current });
   }, []);
 
+  /**
+   * Xóa một todo list khỏi danh sách theo ID.
+   * Dùng cho nút xóa trong dropdown.
+   * Lưu ID đã xóa vào localStorage để persist qua reload.
+   */
+  const removeTodoList = useCallback((listId: string) => {
+    setTodoLists(prev => prev.filter(list => list.id !== listId));
+
+    // Lưu vào localStorage để persist qua reload
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+
+    const storageKey = `dismissedTodos:${sid}`;
+    const existing = localStorage.getItem(storageKey);
+    const dismissed = existing ? JSON.parse(existing) : [];
+    if (!dismissed.includes(listId)) {
+      dismissed.push(listId);
+      localStorage.setItem(storageKey, JSON.stringify(dismissed));
+    }
+  }, []);
+
   return {
     messages,
     streamingContent,
@@ -379,5 +402,7 @@ export function useChat(): UseChatReturn {
     activeSubAgent,
     mcpRuntimeStatus,
     refreshMcp,
+    todoLists,
+    removeTodoList,
   };
 }

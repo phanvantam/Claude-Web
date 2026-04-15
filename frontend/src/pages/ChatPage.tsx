@@ -5,6 +5,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import { projectsApi, configApi, claudeApi, sessionsApi, planApi } from '../services/api';
+import { socketService } from '../services/socket';
 import { useChat } from '../hooks/useChat';
 import ChatWindow from '../components/Chat/ChatWindow';
 import InputBox from '../components/Chat/InputBox';
@@ -69,6 +70,8 @@ const ChatPage: React.FC = () => {
     respondAskUser,
     mcpRuntimeStatus,
     refreshMcp,
+    todoLists,
+    removeTodoList,
   } = useChat();
 
   const lastStartedRef = React.useRef<string | null>(null);
@@ -198,17 +201,16 @@ const ChatPage: React.FC = () => {
   /** Đổi model — lưu vào config backend và lưu riêng cho session hiện tại */
   const handleModelChange = useCallback((model: string) => {
     setConfig(prev => ({ ...prev, model }));
-    
+
     // 1. Cập nhật global config
     configApi.update({ model }).catch(() => {
       message.error('Lỗi khi đổi model mặc định');
     });
 
-    // 2. Cập nhật model riêng cho session hiện tại (hội thoại)
+    // 2. Cập nhật model riêng cho session hiện tại qua socket
     if (sessionId) {
-      sessionsApi.update(sessionId, { model } as any).catch(() => {
-        console.error('[ChatPage] Failed to save model for session');
-      });
+      const socket = socketService.getSocket();
+      socket?.emit('session:setModel', { sessionId, model });
     }
   }, [sessionId]);
 
@@ -323,6 +325,8 @@ const ChatPage: React.FC = () => {
     return subAgents.find(a => a.agentId === selectedAgentId) || null;
   }, [selectedAgentId, subAgents]);
 
+  const todos = todoLists;
+
   const statsContent = (
     <StatsPopoverContent
       sessionId={sessionId}
@@ -385,6 +389,8 @@ const ChatPage: React.FC = () => {
         projectId={project?.id}
         pendingAskUser={pendingAskUser}
         onRespondAskUser={respondAskUser}
+        todoLists={todos}
+        onRemoveTodoList={removeTodoList}
       />
       {/* Loading overlay khi chuyển phiên — backdrop blur + chặn click */}
       {isSwitchingSession && (

@@ -38,6 +38,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     setActiveSubAgent,
     setPendingAskUser,
     setMcpRuntimeStatus,
+    setTodoLists,
     streamingRef,
     sessionIdRef,
     pendingSessionIdRef,
@@ -49,8 +50,43 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     switchTimeoutRef,
   } = deps;
 
-  // ─── Session lifecycle ──────────────────────────────────────────────
+  const rebuildTodoListsFromMessages = (messages: ChatMessage[], sessionId?: string) => {
+    const lists: import('../../types').TodoList[] = [];
+    const dismissed = new Set<string>(
+      sessionId
+        ? JSON.parse(localStorage.getItem(`dismissedTodos:${sessionId}`) || '[]')
+        : []
+    );
 
+    for (const msg of messages) {
+      if (msg.role !== 'assistant' || !msg.blocks) continue;
+      for (const block of msg.blocks) {
+        if (block.type !== 'tool_use' || block.tool?.name !== 'TodoWrite') continue;
+        const listId = `${msg.id}-${block.tool.id}`;
+        if (dismissed.has(listId)) continue;
+        const todos = ((block.tool.input?.todos || block.tool.input?.items || []) as import('../../types').TodoItem[]);
+        if (todos.length === 0) continue;
+        const first = todos[0]?.content || todos[0]?.activeForm || '';
+        const label = !first
+          ? 'Task List'
+          : first.length <= 40
+            ? first
+            : `${first.slice(0, Math.max(first.slice(0, 40).lastIndexOf(' '), 20)).trim()}...`;
+        lists.push({
+          id: listId,
+          label,
+          todos,
+          timestamp: msg.timestamp,
+          messageId: msg.id,
+          toolCallId: block.tool.id,
+        });
+      }
+    }
+
+    return lists;
+  };
+
+  // ─── Session lifecycle ──────────────────────────────────────────────
   socket.on('session:started', async (data: { sessionId: string; state?: SessionStartedState }) => {
     if (pendingSessionIdRef.current && pendingSessionIdRef.current !== data.sessionId) {
       return;
@@ -75,9 +111,15 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
       knownMessageIdsRef.current = new Set(uniqueMessages.map(m => m.id));
       setHasMoreMessages(result.hasMore);
       nextCursorRef.current = result.nextCursor;
+
+      // Reconstruct todo lists from historical messages — append-only, no auto-clear
+      const reconstructed = rebuildTodoListsFromMessages(uniqueMessages, data.sessionId);
+      setTodoLists(reconstructed);
     } catch {
       if (data.state?.messages) {
         setMessages(data.state.messages);
+        const reconstructed = rebuildTodoListsFromMessages(data.state.messages, data.sessionId);
+        setTodoLists(reconstructed);
       }
       setHasMoreMessages(false);
       nextCursorRef.current = null;
@@ -225,6 +267,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
       streamingRef.current = '';
       setProcessingStartedAt(null);
       setActiveSubAgent(null);
+      // Không clear todo khi idle — giữ lại để user thấy kết quả cuối
     } else if (data.startedAt) {
       setProcessingStartedAt(data.startedAt);
     }
@@ -247,6 +290,11 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
   socket.on('session:effortChanged', (data: { sessionId: string; effortLevel?: string }) => {
     if (data.sessionId !== sessionIdRef.current) return;
     setSessionEffortLevelState(data.effortLevel);
+  });
+
+  socket.on('session:modelChanged', (data: { sessionId: string; model?: string }) => {
+    if (data.sessionId !== sessionIdRef.current) return;
+    setSessionModel(data.model);
   });
 
   socket.on('session:permissionModeChanged', (data: { sessionId: string; permissionMode?: string }) => {
@@ -354,6 +402,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     'chat:status',
     'chat:error',
     'session:effortChanged',
+    'session:modelChanged',
     'session:permissionModeChanged',
     'permission:request',
     'permission:resolved',

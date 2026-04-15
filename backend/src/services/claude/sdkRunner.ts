@@ -645,6 +645,8 @@ export async function runSDKQuery(
                 sessionId,
                 blockIndex: ctx.activeStreamBlock.index,
                 blockType: ctx.activeStreamBlock.type,
+                toolName: ctx.activeStreamBlock.type === 'tool_use' ? ctx.activeStreamBlock.toolName : undefined,
+                streamingInput: ctx.activeStreamBlock.type === 'tool_use' ? ctx.activeStreamBlock.accumulatedInput : undefined,
               });
               ctx.activeStreamBlock = null;
             }
