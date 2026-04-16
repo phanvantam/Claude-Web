@@ -273,7 +273,9 @@ export function handleResultEvent(
   }
 
   // Phân tích xem có phải là lỗi do người dùng chủ động dừng (Stop) hay không
+  // Hỗ trợ thêm terminal_reason = 'aborted_tools' (thường xảy ra trong bypassPermissions + plan execution)
   const isAbort = result.terminal_reason === 'aborted_streaming' ||
+    result.terminal_reason === 'aborted_tools' ||
     (Array.isArray(result.errors) && result.errors.some((e: any) => String(e).includes('Request was aborted')));
 
   const completedByModelSessionEndKey = state.interruptReason === 'linux_completion_token';

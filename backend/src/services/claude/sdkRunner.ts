@@ -859,8 +859,15 @@ export async function runSDKQuery(
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] for-await loop finished naturally`);
   } catch (err: any) {
     // Phân biệt abort error (user chủ động) vs runtime error
-    if (err.name === 'AbortError' || abortController.signal.aborted || err.message?.includes('Request was aborted')) {
+    const errMsg = err.message || String(err);
+    const isAbortError = err.name === 'AbortError' || abortController.signal.aborted || errMsg.includes('Request was aborted');
+    const isEdeDiagnostic = errMsg.includes('[ede_diagnostic]') && (errMsg.includes('stop_reason=tool_use') || errMsg.includes('stop_reason=null'));
+
+    if (isAbortError) {
       logger.info(`[Claude] Query aborted for ${sessionId}`);
+    } else if (isEdeDiagnostic) {
+      // SDK diagnostic error sau khi đã xử lý result — bỏ qua an toàn
+      logger.warn(`[Claude][${sessionId}] SDK ede_diagnostic after result handling — expected, ignoring`);
     } else {
       throw err;
     }
