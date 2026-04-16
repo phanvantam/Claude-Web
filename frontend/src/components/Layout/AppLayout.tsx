@@ -71,16 +71,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     // Poll mỗi 5 giây để đồng bộ trạng thái
     const interval = setInterval(fetchData, 5000);
 
-    // Lắng nghe WebSocket — refetch ngay khi có session mới hoặc kết thúc
+    // Lắng nghe WebSocket — refetch ngay khi có session tạo mới/kết thúc/bị xoá
     const socket = socketService.connect();
     const handleSessionChange = () => fetchData();
+    const handleGlobalSessionStatus = (data: { status?: string }) => {
+      if (data?.status === 'deleted') handleSessionChange();
+    };
+
     socket.on('global:session_created', handleSessionChange);
     socket.on('session:ended', handleSessionChange);
+    socket.on('session:deleted', handleSessionChange);
+    socket.on('global:session_status', handleGlobalSessionStatus);
 
     return () => {
       clearInterval(interval);
       socket.off('global:session_created', handleSessionChange);
       socket.off('session:ended', handleSessionChange);
+      socket.off('session:deleted', handleSessionChange);
+      socket.off('global:session_status', handleGlobalSessionStatus);
       socketService.release();
     };
   }, [fetchData]);

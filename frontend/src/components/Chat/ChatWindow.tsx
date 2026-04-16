@@ -19,10 +19,17 @@ import {
   SyncOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
-import type { ChatMessage, ContentBlock, SubAgentActivity } from '../../types';
+import type { ChatMessage, ContentBlock } from '../../types';
+
+interface BlockDot {
+  className: string;
+  icon: React.ReactNode;
+  label?: string;
+}
 import type { PendingPermission } from '../../hooks/useChat';
 import ToolCallCard from './ToolCallCard';
 import MessageContent from './MessageContent';
+import SubAgentResultCard from './SubAgentResultCard';
 
 const { Text } = Typography;
 
@@ -98,99 +105,6 @@ const CollapsibleBlock: React.FC<{
   );
 };
 
-/**
- * Card hiển thị kết quả sub-agent trên timeline chính.
- * - Header: tên agent + trạng thái (thành công/lỗi) + toggle mở/đóng
- * - Collapsible: danh sách tool calls nội bộ (activities)
- * - Footer: nội dung kết quả tóm tắt
- */
-const SubAgentResultCard: React.FC<{
-  agentName: string;
-  result: string;
-  isError?: boolean;
-  activities?: SubAgentActivity[];
-  usage?: { tokens: number; tools: number; durationMs: number };
-  agentId?: string;
-}> = ({ agentName, result, isError, activities, usage, agentId }) => {
-  const [expanded, setExpanded] = useState(false);
-  const hasActivities = activities && activities.length > 0;
-
-  return (
-    <div className={`tl-subagent-result-card ${isError ? 'error' : 'success'}`}>
-      {/* Header: tên + status + toggle */}
-      <div className="subagent-result-header" onClick={() => hasActivities && setExpanded(!expanded)}>
-        <span className="subagent-result-icon">
-          {isError
-            ? <CloseCircleOutlined style={{ color: 'var(--danger)', fontSize: 12 }} />
-            : <CheckCircleOutlined style={{ color: 'var(--success)', fontSize: 12 }} />
-          }
-        </span>
-        <Text strong style={{ fontSize: 13, color: 'var(--accent-light)' }}>
-          {agentName}
-        </Text>
-        {hasActivities && (
-          <span className="subagent-result-count">
-            {activities.length} bước
-          </span>
-        )}
-        {hasActivities && (
-          <span className="subagent-result-toggle">
-            {expanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
-          </span>
-        )}
-
-        {/* Usage stats — hiện bên phải header */}
-        {usage && (
-          <div className="subagent-usage-chips">
-            <span title="Tổng tokens sử dụng">
-              <MessageOutlined style={{ fontSize: 10 }} /> {usage.tokens.toLocaleString()}
-            </span>
-            <span title="Số công cụ đã dùng">
-              <ToolOutlined style={{ fontSize: 10 }} /> {usage.tools}
-            </span>
-            <span title="Thời gian chạy">
-              <ClockCircleOutlined style={{ fontSize: 10 }} /> {(usage.durationMs / 1000).toFixed(1)}s
-            </span>
-            {agentId && (
-              <span className="agent-id-chip" title="Agent ID">
-                ID: {agentId}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Collapsible activities — tool calls nội bộ sub-agent */}
-      {expanded && hasActivities && (
-        <div className="subagent-activities-list">
-          {activities.map((act, idx) => (
-            <div key={idx} className="subagent-activity-item">
-              <span className={`subagent-activity-status ${act.isError ? 'error' : act.result ? 'done' : ''}`}>
-                {act.isError
-                  ? <CloseCircleOutlined style={{ fontSize: 10 }} />
-                  : act.result
-                    ? <CheckCircleOutlined style={{ fontSize: 10 }} />
-                    : <ToolOutlined style={{ fontSize: 10 }} />
-                }
-              </span>
-              <span className="subagent-activity-name">{act.name}</span>
-              <span className="subagent-activity-summary">
-                {act.input && typeof act.input === 'object'
-                  ? Object.entries(act.input).slice(0, 2).map(([k, v]) => `${k}: ${String(v).slice(0, 40)}`).join(', ')
-                  : ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Result text — luôn hiện */}
-      <div className="subagent-result-body">
-        <MessageContent content={result} />
-      </div>
-    </div>
-  );
-};
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -218,6 +132,10 @@ interface ChatWindowProps {
     activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
     currentToolName?: string;
   } | null;
+  /** Mở modal timeline chi tiết của sub-agent */
+  onOpenSubAgentTimeline?: (agentId: string) => void;
+  /** Session ID hiện tại — dùng fetch timeline inline */
+  sessionId?: string | null;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -233,6 +151,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   activeToolName,
   processingStartedAt,
   activeSubAgent,
+  onOpenSubAgentTimeline,
+  sessionId,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -390,7 +310,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
    * Xác định CSS class và icon cho dot trên timeline.
    * Mỗi block type có visual identity riêng để dễ nhận biết.
    */
-  const getBlockDot = (block: ContentBlock, isStreaming: boolean, isLast: boolean) => {
+  const getBlockDot = (block: ContentBlock, isStreaming: boolean, isLast: boolean): BlockDot => {
     if (block.type === 'thinking') {
       return {
         className: 'tl-dot dot-thinking-content',
@@ -414,9 +334,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return { className: `tl-dot dot-tool${isLast ? ' streaming' : ''}`, icon: <ToolOutlined style={{ fontSize: 11 }} /> };
     }
     if (block.type === 'subagent_result') {
+      const shortAgentName = (block.agentName || 'Agent').slice(0, 14);
       return {
         className: `tl-dot dot-subagent-result${block.isError ? ' error' : ' success'}`,
-        icon: <RobotOutlined style={{ fontSize: 11 }} />,
+        icon: <RobotOutlined style={{ fontSize: 10 }} />,
+        label: shortAgentName,
       };
     }
     // Text block
@@ -456,6 +378,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div key={`block-${i}`} className="tl-block-row">
                 <div className={dot.className}>{dot.icon}</div>
                 <div className="tl-block-content">
+                  {dot.label && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span className={`tl-dot-label${block.isError ? ' error' : ' success'}`}>
+                        {dot.label}
+                      </span>
+                    </div>
+                  )}
                   <SubAgentResultCard
                     agentName={block.agentName}
                     result={block.result}
@@ -463,6 +392,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     activities={block.activities}
                     usage={block.usage}
                     agentId={block.agentId}
+                    onOpenTimeline={onOpenSubAgentTimeline}
+                    sessionId={sessionId ?? undefined}
                   />
                 </div>
               </div>

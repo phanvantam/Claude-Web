@@ -111,13 +111,61 @@ router.get('/:id/messages', (req, res) => {
 
 /**
  * DELETE /api/sessions/:id — Xoá session và toàn bộ messages.
+ * Thứ tự:
+ *  1. stopSession nếu đang active → interrupt CLI process + emit session:ended
+ *  2. xoá khỏi DB (cascade → messages)
+ *  3. emit session:deleted → thông báo tất cả client đang mở session này
  */
 router.delete('/:id', (req, res) => {
   try {
-    const success = deleteSession(req.params.id);
+    const sessionId = req.params.id;
+    const savedSession = getSession(sessionId);
+    if (!savedSession) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // 1. Dừng CLI process nếu session đang active (tránh orphan process)
+    if (claudeService.isSessionActive(sessionId)) {
+      claudeService.stopSession(sessionId);
+    }
+
+    // 2. Xoá dữ liệu Claude CLI (file hội thoại + thư mục subagents)
+    // DB app và storage CLI là hai hệ thống tách biệt — cần dọn cả hai.
+    const { getProject } = require('../services/project');
+    const { getEncodedCwd } = require('../services/claude/utils');
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+
+    const project = getProject(savedSession.projectId);
+    if (project?.path) {
+      const encodedCwd = getEncodedCwd(project.path);
+      const cliProjectsDir = path.join(os.homedir(), '.claude', 'projects', encodedCwd);
+      const cliSessionFile = path.join(cliProjectsDir, `${savedSession.sessionId}.jsonl`);
+      const cliSessionDir = path.join(cliProjectsDir, savedSession.sessionId);
+
+      if (fs.existsSync(cliSessionFile)) {
+        fs.rmSync(cliSessionFile, { force: true });
+      }
+      if (fs.existsSync(cliSessionDir)) {
+        fs.rmSync(cliSessionDir, { recursive: true, force: true });
+      }
+    }
+
+    // 3. Xoá khỏi DB — cascade FK tự động xoá messages
+    const success = deleteSession(sessionId);
     if (!success) {
       return res.status(404).json({ error: 'Session not found' });
     }
+
+    // 4. Emit socket event để các client khác biết session đã bị xoá
+    const { getIo } = require('../socket/io');
+    const io = getIo();
+    if (io) {
+      io.to(sessionId).emit('session:deleted', { sessionId });
+      io.emit('global:session_status', { sessionId, status: 'deleted' });
+    }
+
     res.status(204).send();
   } catch (error: any) {
     res.status(500).json({ error: error.message });

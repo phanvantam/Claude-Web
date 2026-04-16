@@ -237,6 +237,18 @@ const ChatPage: React.FC = () => {
     }
   }, [sessionId]);
 
+  /** Xoá toàn bộ cuộc hội thoại hiện tại */
+  const handleDeleteSession = useCallback(async () => {
+    if (!sessionId || !projectId) return;
+    try {
+      await sessionsApi.delete(sessionId);
+      message.success('Đã xoá cuộc hội thoại');
+      navigate(`/chat/${projectId}`, { replace: true });
+    } catch {
+      message.error('Không thể xoá cuộc hội thoại');
+    }
+  }, [sessionId, projectId, navigate]);
+
   const sessionStats = useMemo(() => {
     let inputTokens = 0;
     let outputTokens = 0;
@@ -374,6 +386,7 @@ const ChatPage: React.FC = () => {
         onOpenSubAgentDrawer={handleOpenSubAgentDrawer}
         statsContent={statsContent}
         onClearMessages={clearMessages}
+        onDeleteSession={handleDeleteSession}
         planCount={planCount}
         onOpenPlanDrawer={() => { setPlanDrawerOpen(true); fetchPlanCount(); }}
         onNavigateToProject={(id) => navigate(`/project/${id}`)}
@@ -393,6 +406,8 @@ const ChatPage: React.FC = () => {
         activeToolName={activeToolName}
         processingStartedAt={processingStartedAt}
         activeSubAgent={activeSubAgent}
+        onOpenSubAgentTimeline={handleSelectAgent}
+        sessionId={sessionId}
       />
 
       {/* Input Box */}
@@ -455,6 +470,7 @@ const ChatPage: React.FC = () => {
         projectId={project?.id}
         onExecute={handleSend}
         onExecutionStarted={handleExecutionStarted}
+        permissionMode={sessionPermissionMode}
       />
     </div>
   );

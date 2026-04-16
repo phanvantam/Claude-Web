@@ -13,6 +13,7 @@ import { claudeService } from './services/claude';
 import { logger } from './services/logger';
 import { registerSocketHandlers } from './socket/handlers';
 import { registerClaudeEventForwarders } from './socket/eventForwarders';
+import { setIo } from './socket/io';
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -38,6 +39,9 @@ const io = new Server(httpServer, {
 
 // Middleware
 app.use(cors());
+
+// Lưu io singleton để REST routes có thể emit socket events
+setIo(io);
 app.use(express.json());
 
 // Disable caching for API routes

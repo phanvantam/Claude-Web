@@ -114,18 +114,40 @@ router.get('/list', (req, res) => {
     }
 
     const plansDir = ensurePlansDir(project.path);
-    const files = fs.readdirSync(plansDir)
-      .filter(f => f.endsWith('.md'))
-      .map(filename => {
-        const fullPath = path.join(plansDir, filename);
-        const stat = fs.statSync(fullPath);
-        return {
-          filename,
-          updatedAt: stat.mtime.toISOString(),
-          sizeBytes: stat.size,
-          executionStatus: readPlanExecutionStatus(fullPath),
-        };
-      })
+
+    /** Quét đệ quy tất cả file .md trong plansDir (bao gồm subdirectories) */
+    function getAllPlanFiles(dir: string, rel: string = ''): Array<{
+      filename: string;
+      updatedAt: string;
+      sizeBytes: number;
+      executionStatus: ExecutionStatus;
+    }> {
+      const files: Array<{
+        filename: string;
+        updatedAt: string;
+        sizeBytes: number;
+        executionStatus: ExecutionStatus;
+      }> = [];
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const relativePath = rel ? path.join(rel, entry.name) : entry.name;
+        if (entry.isDirectory()) {
+          files.push(...getAllPlanFiles(fullPath, relativePath));
+        } else if (entry.name.endsWith('.md')) {
+          const stat = fs.statSync(fullPath);
+          files.push({
+            filename: relativePath.replace(/\\/g, '/'),
+            updatedAt: stat.mtime.toISOString(),
+            sizeBytes: stat.size,
+            executionStatus: readPlanExecutionStatus(fullPath),
+          });
+        }
+      }
+      return files;
+    }
+
+    const files = getAllPlanFiles(plansDir)
       // Sắp xếp mới nhất lên đầu
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
@@ -158,35 +180,65 @@ router.get('/', (req, res) => {
     const plansDir = ensurePlansDir(project.path);
 
     if (filename) {
-      // Đọc file cụ thể — validate tên file để tránh path traversal
-      const safeName = path.basename(filename);
-      const fullPath = path.join(plansDir, safeName);
-
-      if (!fs.existsSync(fullPath)) {
-        return res.json({ found: false, filename: safeName });
+      // Hỗ trợ subfolder path: filename có thể là "sub/plan.md"
+      // Validate: chỉ chấp nhận relative path nằm trong plansDir, chặn traversal
+      const normalized = filename.replace(/\\/g, '/').replace(/\.\./g, '');
+      const safeRelative = path.join('.', normalized).replace(/\\/g, '/').replace(/^\.\//, '');
+      const fullPath = path.join(plansDir, safeRelative);
+      const resolved = path.resolve(fullPath);
+      if (!resolved.startsWith(path.resolve(plansDir))) {
+        return res.status(400).json({ error: 'Path không hợp lệ' });
       }
-
+      if (!fs.existsSync(fullPath)) {
+        return res.json({ found: false, filename: normalized });
+      }
       const content = fs.readFileSync(fullPath, 'utf-8');
       return res.json({
         found: true,
-        filename: safeName,
+        filename: normalized,
         filepath: fullPath,
         content,
       });
     }
 
-    // Backward compatible: tìm file đầu tiên trong thư mục
-    const files = fs.readdirSync(plansDir).filter(f => f.endsWith('.md'));
-    if (files.length === 0) {
-      return res.json({ found: false });
+    // Backward compatible: tìm file đầu tiên (mới nhất theo mtime)
+    function findNewestMd(dir: string): string | null {
+      function walk(currentDir: string): { path: string; mtimeMs: number } | null {
+        let newest: { path: string; mtimeMs: number } | null = null;
+        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const full = path.join(currentDir, entry.name);
+          if (entry.isDirectory()) {
+            const subNewest = walk(full);
+            if (subNewest && (!newest || subNewest.mtimeMs > newest.mtimeMs)) {
+              newest = subNewest;
+            }
+          } else if (entry.name.endsWith('.md')) {
+            const stat = fs.statSync(full);
+            if (!newest || stat.mtimeMs > newest.mtimeMs) {
+              newest = { path: full, mtimeMs: stat.mtimeMs };
+            }
+          }
+        }
+
+        return newest;
+      }
+
+      const newest = walk(dir);
+      return newest ? newest.path : null;
     }
 
-    const firstFile = files[0];
-    const content = fs.readFileSync(path.join(plansDir, firstFile), 'utf-8');
+    const firstFile = findNewestMd(plansDir);
+    if (!firstFile) {
+      return res.json({ found: false });
+    }
+    const content = fs.readFileSync(firstFile, 'utf-8');
+    const relativeName = path.relative(plansDir, firstFile).replace(/\\/g, '/');
     return res.json({
       found: true,
-      filename: firstFile,
-      filepath: path.join(plansDir, firstFile),
+      filename: relativeName,
+      filepath: firstFile,
       content,
     });
   } catch (err) {
@@ -215,9 +267,18 @@ router.put('/', (req, res) => {
     }
 
     const plansDir = ensurePlansDir(project.path);
-    // Validate tên file — tránh path traversal
-    const safeName = path.basename(filename || 'IMPLEMENTATION_PLAN.md');
-    const planPath = path.join(plansDir, safeName);
+    // Hỗ trợ subfolder path: filename có thể là "sub/plan.md"
+    const normalized = (filename || 'IMPLEMENTATION_PLAN.md').replace(/\\/g, '/').replace(/\.\./g, '');
+    const safeRelative = path.join('.', normalized).replace(/\\/g, '/').replace(/^\.\//, '');
+    const planPath = path.join(plansDir, safeRelative);
+    const resolved = path.resolve(planPath);
+    if (!resolved.startsWith(path.resolve(plansDir))) {
+      return res.status(400).json({ error: 'Path không hợp lệ' });
+    }
+    const parentDir = path.dirname(planPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
 
     // Nếu file đã tồn tại, preserve executionStatus hiện tại
     let finalContent = content;
@@ -234,7 +295,7 @@ router.put('/', (req, res) => {
 
     return res.json({
       success: true,
-      filename: safeName,
+      filename: safeRelative,
       filepath: planPath,
     });
   } catch (err) {
@@ -271,8 +332,13 @@ router.patch('/status', (req, res) => {
     }
 
     const plansDir = getPlansDir(project.path);
-    const safeName = path.basename(filename);
-    const fullPath = path.join(plansDir, safeName);
+    const normalized = filename.replace(/\\/g, '/').replace(/\.\./g, '');
+    const safeRelative = path.join('.', normalized).replace(/\\/g, '/').replace(/^\.\//, '');
+    const fullPath = path.join(plansDir, safeRelative);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(path.resolve(plansDir))) {
+      return res.status(400).json({ error: 'Path không hợp lệ' });
+    }
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: 'File không tồn tại' });
@@ -281,7 +347,7 @@ router.patch('/status', (req, res) => {
     const content = fs.readFileSync(fullPath, 'utf-8');
     const updatedContent = setExecutionStatusInContent(content, executionStatus);
     fs.writeFileSync(fullPath, updatedContent, 'utf-8');
-    logger.info(`[Plan] Updated executionStatus to '${executionStatus}' for ${safeName}`);
+    logger.info(`[Plan] Updated executionStatus to '${executionStatus}' for ${safeRelative}`);
 
     return res.json({ success: true, executionStatus });
   } catch (err) {
@@ -309,8 +375,13 @@ router.delete('/', (req, res) => {
     }
 
     const plansDir = getPlansDir(project.path);
-    const safeName = path.basename(filename);
-    const fullPath = path.join(plansDir, safeName);
+    const normalized = filename.replace(/\\/g, '/').replace(/\.\./g, '');
+    const safeRelative = path.join('.', normalized).replace(/\\/g, '/').replace(/^\.\//, '');
+    const fullPath = path.join(plansDir, safeRelative);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(path.resolve(plansDir))) {
+      return res.status(400).json({ error: 'Path không hợp lệ' });
+    }
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: 'File không tồn tại' });

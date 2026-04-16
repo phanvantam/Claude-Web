@@ -203,7 +203,6 @@
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 12px;
-  cursor: pointer;
   transition: all 0.2s ease;
 }
 
@@ -294,6 +293,36 @@
   transition: all 0.2s ease;
 }
 
+.proj-dash-session-delete-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.proj-dash-session-delete {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.proj-dash-session-card:hover .proj-dash-session-delete {
+  color: #ff6b6b;
+}
+
+.proj-dash-session-delete-btn:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.proj-dash-session-delete-btn:hover .proj-dash-session-delete {
+  color: #ff6b6b;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .proj-dash {
@@ -333,5 +362,9 @@
   .proj-dash-session-arrow {
     opacity: 1;
     transform: none;
+  }
+
+  .proj-dash-session-delete {
+    color: #ff6b6b;
   }
 }

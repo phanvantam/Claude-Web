@@ -303,8 +303,8 @@ export class ClaudeService extends EventEmitter {
 
   /**
    * Xử lý phản hồi AskUserQuestion từ user (qua WebSocket).
-   * Dùng 'deny' + message chứa answer — vì AskUserQuestion tool nội bộ
-   * không đọc updatedInput. Claude sẽ nhận message như câu trả lời từ user.
+   * Dùng 'allow' + updatedInput chứa answer để Claude nhận được câu trả lời
+   * mà không bị đánh dấu là error.
    */
   resolveAskUser(sessionId: string, answer: string): void {
     const state = this.sessions.get(sessionId);
@@ -317,8 +317,11 @@ export class ClaudeService extends EventEmitter {
     state.pendingPermission = undefined;
 
     logger.info(`[Claude][${sessionId}] AskUserQuestion answered: ${answer.slice(0, 100)}`);
-    // Trả answer qua deny message — Claude nhận message text là câu trả lời
-    resolve({ behavior: 'deny', message: `Người dùng trả lời: ${answer}` });
+    // Trả answer qua allow + updatedInput để không bị đánh dấu error
+    resolve({
+      behavior: 'allow',
+      updatedInput: { answer }
+    });
   }
 
   abortSession(sessionId: string): void {

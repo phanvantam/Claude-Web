@@ -131,8 +131,28 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     if (data.state?.effortLevel) setSessionEffortLevelState(data.state.effortLevel);
     if (data.state?.permissionMode) setSessionPermissionModeState(data.state.permissionMode);
 
-    if (data.state?.pendingPermission) setPendingPermission(data.state.pendingPermission);
-    else setPendingPermission(null);
+    const restoredPendingPermission = data.state?.pendingPermission;
+    const isRestoredAskUser = restoredPendingPermission?.toolName === 'AskUserQuestion';
+
+    if (isRestoredAskUser) {
+      const input = restoredPendingPermission?.input || {};
+      setPendingPermission(null);
+      setPendingAskUser({
+        questions: (input.questions as AskUserQuestionItem[]) || [{
+          question: String(input.question || 'Claude muốn hỏi bạn'),
+          options: input.options as AskUserQuestionOption[],
+          multiSelect: input.multiSelect === true,
+          header: typeof input.header === 'string' ? input.header : undefined,
+        }],
+        metadata: input.metadata as Record<string, unknown>,
+      });
+    } else {
+      if (restoredPendingPermission) setPendingPermission(restoredPendingPermission);
+      else setPendingPermission(null);
+
+      if (data.state?.pendingAskUser) setPendingAskUser(data.state.pendingAskUser);
+      else setPendingAskUser(null);
+    }
 
     setActiveToolName(data.state?.activeToolName || null);
     setActiveSubAgent(data.state?.activeSubAgent || null);
@@ -189,6 +209,29 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     setSessionId(null);
     sessionIdRef.current = null;
     setStatus('idle');
+  });
+
+  socket.on('session:deleted', (data: { sessionId: string }) => {
+    if (data.sessionId !== sessionIdRef.current) return;
+    setSessionId(null);
+    sessionIdRef.current = null;
+    setMessages([]);
+    setStreamingContent('');
+    setStreamingBlocks([]);
+    streamingRef.current = '';
+    knownMessageIdsRef.current = new Set();
+    setStatus('idle');
+    setProcessingStartedAt(null);
+    setActiveToolName(null);
+    setActiveSubAgent(null);
+    setHasMoreMessages(false);
+    nextCursorRef.current = null;
+    setPendingPermission(null);
+    setPendingAskUser(null);
+    setTodoLists([]);
+    setSessionModel(undefined);
+    setSessionEffortLevelState(undefined);
+    setSessionPermissionModeState(undefined);
   });
 
   // ─── Chat message (finalized) ─────────────────────────────────────
@@ -406,6 +449,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     'session:started',
     'session:compacted',
     'session:ended',
+    'session:deleted',
     'chat:message',
     'chat:status',
     'chat:error',

@@ -97,6 +97,8 @@ export interface GlobalConfig {
 /** Thông tin tổng quan của một sub-agent đã chạy trong session */
 export interface SubAgentInfo {
   agentId: string;
+  /** Tên hiển thị của agent (nếu backend cung cấp) */
+  name?: string;
   /** Loại agent: "Plan", "Bash", custom name... */
   agentType: string;
   description: string;

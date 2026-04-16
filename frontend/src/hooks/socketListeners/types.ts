@@ -29,6 +29,7 @@ export interface SessionStartedState {
   effortLevel?: string;
   permissionMode?: string;
   pendingPermission?: PendingPermission;
+  pendingAskUser?: PendingAskUser;
   processingStartedAt?: number;
   activeToolName?: string;
   activeSubAgent?: ActiveSubAgent;

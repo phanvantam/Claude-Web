@@ -12,6 +12,14 @@
   isolation: isolate;
 }
 
+@media (min-width: 1024px) {
+  .input-box-wrapper {
+    background: transparent;
+    backdrop-filter: none;
+    border-top: none;
+  }
+}
+
 /* === Toolbar: model selector + thinking toggle === */
 .input-toolbar {
   display: flex;
@@ -498,3 +506,12 @@
   text-decoration: line-through;
 }
 
+
+/* Permission panel input renderer container */
+.permission-panel-input {
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}

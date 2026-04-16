@@ -599,3 +599,161 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+
+/* ========================================
+   TOOL INPUT RENDERERS
+   ======================================== */
+.tool-input-file,
+.tool-input-bash,
+.tool-input-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.tool-input-row {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  align-items: baseline;
+}
+
+.tool-input-label {
+  color: var(--text-muted);
+  min-width: 80px;
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.tool-input-value {
+  color: var(--text-primary);
+  word-break: break-word;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.tool-input-code {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.tool-input-json {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+}
+
+/* Tool result output display */
+.tool-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.tool-output-text {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.tool-output-stderr {
+  color: var(--danger, #ff6b6b);
+  border-color: rgba(255, 107, 107, 0.2);
+}
+
+/* Edit tool diff rows */
+.tool-input-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-input-edit-row {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-input-diff {
+  margin: 0;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #ff6b6b;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.tool-input-diff-new {
+  background: rgba(81, 207, 102, 0.08);
+  border-color: rgba(81, 207, 102, 0.2);
+  color: #51cf66;
+}
+
+/* Command row — full width for bash */
+.tool-input-command-row {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-input-command {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+/* Preview text */
+.tool-input-preview {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+/* Generic / MCP input display */
+.tool-input-generic,
+.tool-input-mcp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Web tool */
+.tool-input-web {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Input result JSON */
+.tool-input-result {
+  font-size: 11px;
+  max-height: 200px;
+  overflow-y: auto;
+}

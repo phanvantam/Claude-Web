@@ -2,6 +2,8 @@
 .ask-user-panel {
   border-color: rgba(108, 92, 231, 0.3);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(108, 92, 231, 0.1);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .ask-user-panel .permission-panel-icon {
@@ -10,6 +12,7 @@
 
 .ask-user-panel .permission-panel-title {
   color: var(--accent-light);
+  word-break: break-word;
 }
 
 .ask-user-question-block {
@@ -24,14 +27,19 @@
   font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
   margin: 6px 0 10px;
+  padding: 0 14px;
   line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Options mode — danh sách button chọn */
 .ask-user-options {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding: 0 14px 14px;
+  min-width: 0;
 }
 
 .ask-user-option-btn {
@@ -47,6 +55,8 @@
   transition: all 0.2s ease;
   text-align: left;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .ask-user-option-btn:hover {
@@ -75,10 +85,12 @@
   display: flex;
   gap: 8px;
   align-items: flex-end;
+  padding: 0 14px 14px;
 }
 
 .ask-user-textarea {
   flex: 1;
+  min-width: 0;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -90,6 +102,7 @@
   resize: none;
   outline: none;
   transition: border-color 0.2s ease;
+  box-sizing: border-box;
 }
 
 .ask-user-textarea:focus {
@@ -223,5 +236,226 @@
 
 .menu-item-help:hover {
   color: var(--accent-light);
+}
+
+/* === AskUserQuestion stepper (nhiều câu hỏi liên tiếp) === */
+.ask-user-stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 6px;
+  flex-wrap: wrap;
+}
+
+.ask-user-stepper-progress {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-user-stepper-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.ask-user-stepper-dot.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(108, 92, 231, 0.4);
+}
+
+.ask-user-stepper-dot.done {
+  background: rgba(108, 92, 231, 0.25);
+  color: var(--accent-light);
+  border-color: rgba(108, 92, 231, 0.4);
+}
+
+.ask-user-stepper-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Option buttons với check/radio icon */
+.ask-user-options.single .ask-user-option-btn,
+.ask-user-options.multi .ask-user-option-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.ask-user-option-check {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.check-icon,
+.radio-icon {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.25);
+  transition: all 0.2s ease;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.check-icon.checked {
+  color: var(--accent);
+}
+
+.radio-icon.selected {
+  color: var(--accent);
+}
+
+.ask-user-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-user-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-light);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.ask-user-option-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.ask-user-option-btn.selected {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+/* Footer navigation */
+.ask-user-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
+}
+
+.ask-user-footer-right {
+  margin-left: auto;
+  min-width: 0;
+}
+
+.ask-user-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ask-user-footer-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ask-user-footer-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ask-user-footer-btn.next {
+  background: rgba(108, 92, 231, 0.15);
+  border-color: rgba(108, 92, 231, 0.3);
+  color: var(--accent-light);
+}
+
+.ask-user-footer-btn.next:hover:not(:disabled) {
+  background: rgba(108, 92, 231, 0.25);
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .ask-user-panel {
+    max-width: 100%;
+  }
+  .ask-user-stepper {
+    padding: 6px 12px 4px;
+    gap: 8px;
+  }
+  .ask-user-stepper-progress {
+    gap: 4px;
+  }
+  .ask-user-stepper-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+  .ask-user-stepper-label {
+    font-size: 11px;
+  }
+  .ask-user-question-text {
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .ask-user-options {
+    padding: 0 12px 12px;
+    gap: 6px;
+  }
+  .ask-user-option-btn {
+    padding: 8px 12px;
+  }
+  .ask-user-option-label {
+    font-size: 12px;
+  }
+  .ask-user-text-input {
+    padding: 0 12px 12px;
+  }
+  .ask-user-textarea {
+    font-size: 14px;
+  }
+  .ask-user-footer {
+    padding: 8px 12px 12px;
+    gap: 8px;
+  }
+  .ask-user-footer-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .ask-user-footer-btn.next {
+    flex: 1;
+    justify-content: center;
+  }
 }
 

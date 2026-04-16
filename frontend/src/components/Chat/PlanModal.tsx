@@ -23,6 +23,8 @@ interface PlanModalProps {
   onChanged: () => void;
   /** Callback báo plan vừa bắt đầu thực thi */
   onExecutionStarted?: (filename: string) => void;
+  /** Permission mode hiện tại để chặn execute khi đang ở plan mode */
+  permissionMode?: string;
 }
 
 /**
@@ -38,6 +40,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
   onExecute,
   onChanged,
   onExecutionStarted,
+  permissionMode,
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,6 +135,12 @@ const PlanModal: React.FC<PlanModalProps> = ({
 
   /** Gửi lệnh thực thi kế hoạch vào phiên chat — Tự động chuyển mode khi bấm */
   const handleExecute = useCallback(() => {
+    // Ở plan mode chỉ được tạo/chỉnh sửa kế hoạch, không được thực thi luôn.
+    if (permissionMode === 'plan') {
+      message.warning('Đang ở chế độ lập kế hoạch. Hãy chuyển sang mode khác rồi mới thực thi.');
+      return;
+    }
+
     // Normalize filename giống handleSave
     const normalizedFilename = (filename || newFilename.trim());
     const planFilename = normalizedFilename.endsWith('.md')
@@ -143,7 +152,7 @@ const PlanModal: React.FC<PlanModalProps> = ({
       return;
     }
     setExecuteModalOpen(true);
-  }, [filename, newFilename]);
+  }, [filename, newFilename, permissionMode]);
 
   const doConfirmExecute = useCallback(async () => {
     const normalizedFilename = (filename || newFilename.trim());

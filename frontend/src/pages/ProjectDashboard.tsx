@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Typography, Spin, Empty, message, Tooltip } from 'antd';
+import { Typography, Spin, Empty, message, Tooltip, Popconfirm } from 'antd';
 import {
   PlusOutlined,
   MessageOutlined,
@@ -14,8 +14,9 @@ import {
   LoadingOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
-import { projectsApi } from '../services/api';
+import { projectsApi, sessionsApi } from '../services/api';
 import type { Project, ChatSession } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -95,6 +96,17 @@ const ProjectDashboard: React.FC = () => {
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days} ngày trước`;
     return new Date(isoDate).toLocaleDateString('vi-VN');
+  };
+
+  /** Xoá phiên chat */
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await sessionsApi.delete(sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      message.success('Đã xoá phiên chat');
+    } catch {
+      message.error('Không thể xoá phiên chat');
+    }
   };
 
   if (loading) {
@@ -252,9 +264,12 @@ const ProjectDashboard: React.FC = () => {
               <div
                 key={session.id}
                 className="proj-dash-session-card"
-                onClick={() => navigate(`/chat/${project.id}?sessionId=${session.id}`)}
               >
-                <div className="proj-dash-session-left">
+                <div
+                  className="proj-dash-session-left"
+                  onClick={() => navigate(`/chat/${project.id}?sessionId=${session.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="proj-dash-session-index">
                     <MessageOutlined />
                   </div>
@@ -294,6 +309,22 @@ const ProjectDashboard: React.FC = () => {
                   <span className="proj-dash-session-time">
                     <ClockCircleOutlined /> {timeAgo(session.updatedAt)}
                   </span>
+                  <Popconfirm
+                    title="Xoá phiên chat này?"
+                    description="Tin nhắn và dữ liệu liên quan sẽ bị xoá vĩnh viễn."
+                    onConfirm={() => handleDeleteSession(session.id)}
+                    okText="Xoá"
+                    cancelText="Huỷ"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <button
+                      type="button"
+                      className="proj-dash-session-delete-btn"
+                      aria-label="Xoá phiên chat"
+                    >
+                      <DeleteOutlined className="proj-dash-session-delete" />
+                    </button>
+                  </Popconfirm>
                   <ArrowRightOutlined className="proj-dash-session-arrow" />
                 </div>
               </div>

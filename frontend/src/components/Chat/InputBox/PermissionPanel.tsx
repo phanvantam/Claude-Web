@@ -2,6 +2,7 @@ import React from 'react';
 import { Popover } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, LockOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { PendingPermission } from '../../../hooks/useChat';
+import { renderToolInput } from '../ToolInputRenderers';
 import { getToolDescription } from './constants';
 
 const PermissionPanel: React.FC<{
@@ -32,9 +33,9 @@ const PermissionPanel: React.FC<{
             );
           })()}
         </p>
-        <pre className="permission-panel-code">
-          {JSON.stringify(pendingPermission.input, null, 2)}
-        </pre>
+        <div className="permission-panel-input">
+          {renderToolInput(pendingPermission.toolName, pendingPermission.input)}
+        </div>
       </div>
       <div className="permission-panel-actions">
         <button

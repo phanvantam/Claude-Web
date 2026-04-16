@@ -1,33 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Modal, Spin, Typography, Empty } from 'antd';
 import {
-  BulbOutlined,
-  ToolOutlined,
-  MessageOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   LoadingOutlined,
-  RobotOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { sessionsApi } from '../../services/api';
 import type { SubAgentInfo, SubAgentTimelineEvent } from '../../types';
+import TimelineEventRow from './TimelineEventRow';
 
 const { Text } = Typography;
 
 interface SubAgentTimelineModalProps {
   open: boolean;
   onClose: () => void;
-  /** Session ID — dùng để gọi API */
   sessionId: string | null;
-  /** Agent ID đang xem */
   agentId: string | null;
-  /** Metadata agent — hiển thị title */
   agentInfo?: SubAgentInfo | null;
 }
 
 /**
  * Modal hiển thị timeline events chi tiết của một sub-agent.
- * Tái sử dụng CSS pattern từ ChatWindow (tl-block-row, tl-dot).
+ * Tái sử dụng TimelineEventRow để đồng bộ UI với timeline chat chính.
  */
 const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
   open,
@@ -38,8 +31,8 @@ const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
 }) => {
   const [events, setEvents] = useState<SubAgentTimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [allExpanded, setAllExpanded] = useState(true);
 
-  /** Full-screen modal trên mobile */
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -63,73 +56,12 @@ const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
       .finally(() => setLoading(false));
   }, [open, sessionId, agentId]);
 
-  /**
-   * Format timestamp ISO → giờ:phút:giây.
-   */
-  const formatTime = (ts: string) => {
-    if (!ts) return '';
-    return new Date(ts).toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
-
-  /**
-   * Xác định icon + CSS class cho mỗi event type.
-   * Giữ nhất quán với visual language của ChatWindow.
-   */
-  const getEventDot = (event: SubAgentTimelineEvent) => {
-    switch (event.type) {
-      case 'thinking':
-        return {
-          className: 'tl-dot dot-thinking-content',
-          icon: <BulbOutlined style={{ fontSize: 12 }} />,
-          label: 'Suy luận',
-          color: '#f1c40f',
-        };
-      case 'tool_use':
-        return {
-          className: 'tl-dot dot-tool',
-          icon: <ToolOutlined style={{ fontSize: 11 }} />,
-          label: event.toolName || 'Tool',
-          color: '#e17055',
-        };
-      case 'tool_result':
-        return {
-          className: event.isError ? 'tl-dot dot-tool-error' : 'tl-dot dot-tool-success',
-          icon: event.isError
-            ? <CloseCircleOutlined style={{ fontSize: 11 }} />
-            : <CheckCircleOutlined style={{ fontSize: 11 }} />,
-          label: event.isError ? 'Lỗi' : 'Kết quả',
-          color: event.isError ? '#ff6b6b' : '#51cf66',
-        };
-      case 'text':
-        return {
-          className: 'tl-dot dot-text',
-          icon: <MessageOutlined style={{ fontSize: 10 }} />,
-          label: 'Phản hồi',
-          color: 'var(--accent)',
-        };
-      default:
-        return {
-          className: 'tl-dot dot-text',
-          icon: <MessageOutlined style={{ fontSize: 10 }} />,
-          label: 'Event',
-          color: 'var(--text-muted)',
-        };
-    }
-  };
-
-  /**
-   * Cắt nội dung quá dài cho hiển thị tóm tắt.
-   * Thinking và text giữ nguyên. Tool input/result giới hạn 500 ký tự.
-   */
-  const truncateContent = (content: string, type: string) => {
-    if (type === 'thinking' || type === 'text') return content;
-    if (content.length > 500) return content.slice(0, 500) + '\n...';
-    return content;
-  };
+  // Đếm các loại event để show summary
+  const eventCounts = useMemo(() => {
+    const counts = { thinking: 0, tool_use: 0, tool_result: 0, text: 0 };
+    for (const e of events) counts[e.type] = (counts[e.type] || 0) + 1;
+    return counts;
+  }, [events]);
 
   return (
     <Modal
@@ -137,26 +69,50 @@ const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={isMobile ? '100%' : 720}
+      width={isMobile ? '100%' : 680}
       style={{ top: isMobile ? 0 : 40 }}
       title={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <RobotOutlined style={{ fontSize: 15, color: 'var(--accent)' }} />
-            <span>{agentInfo?.agentType || 'Sub Agent'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Agent header — tên + icon màu theo loại agent */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>
+              <ThunderboltOutlined style={{ color: 'var(--accent)' }} />
+            </span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+              {agentInfo?.name || agentInfo?.agentType || 'Sub Agent'}
+            </span>
             {agentInfo?.startedAt && (
-              <Text style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 400, fontFamily: "'JetBrains Mono', monospace" }}>
+              <Text style={{ color: 'var(--text-muted)', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>
                 {new Date(agentInfo.startedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
+            {/* Summary badges */}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+              {eventCounts.thinking > 0 && (
+                <span className="tl-subagent-step-count" style={{ color: '#f1c40f', borderColor: 'rgba(241,196,15,0.3)', background: 'rgba(241,196,15,0.08)' }}>
+                  {eventCounts.thinking} suy luận
+                </span>
+              )}
+              {eventCounts.tool_use > 0 && (
+                <span className="tl-subagent-step-count" style={{ color: '#e17055', borderColor: 'rgba(225,112,85,0.3)', background: 'rgba(225,112,85,0.08)' }}>
+                  {eventCounts.tool_use} tool
+                </span>
+              )}
+              {eventCounts.tool_result > 0 && (
+                <span className="tl-subagent-step-count" style={{ color: '#51cf66', borderColor: 'rgba(81,207,102,0.3)', background: 'rgba(81,207,102,0.08)' }}>
+                  {eventCounts.tool_result} kết quả
+                </span>
+              )}
+            </div>
           </div>
+          {/* Description */}
           {agentInfo?.description && (
             <Text style={{
               color: 'var(--text-secondary)',
               fontWeight: 400,
               fontSize: 12,
               lineHeight: 1.4,
-              paddingLeft: 23,
+              paddingLeft: 26,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               display: '-webkit-box',
@@ -172,13 +128,13 @@ const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
         header: {
           background: 'var(--bg-primary)',
           borderBottom: '1px solid var(--border)',
-          padding: '16px 24px',
+          padding: '14px 20px',
         },
         body: {
           background: 'var(--bg-primary)',
           maxHeight: '80vh',
           overflowY: 'auto',
-          padding: '16px 24px',
+          padding: '12px 20px 20px',
         },
       }}
     >
@@ -199,46 +155,78 @@ const SubAgentTimelineModal: React.FC<SubAgentTimelineModalProps> = ({
           }
         />
       ) : (
-        <div className="subagent-timeline">
+        <div className="subagent-timeline-modal">
+          {/* Controls row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setAllExpanded(!allExpanded)}
+              style={{
+                background: 'rgba(108, 92, 231, 0.1)',
+                border: '1px solid rgba(108, 92, 231, 0.2)',
+                borderRadius: 6,
+                color: 'var(--accent-light)',
+                fontSize: 11,
+                padding: '3px 10px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {allExpanded ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {events.length} sự kiện
+            </span>
+          </div>
+
+          {/* Events list — dùng TimelineEventRow tái sử dụng */}
           {events.map((event, i) => {
-            const dot = getEventDot(event);
+            const color = (() => {
+              switch (event.type) {
+                case 'thinking':
+                  return {
+                    bg: 'rgba(241, 196, 15, 0.06)',
+                    border: 'rgba(241, 196, 15, 0.15)',
+                  };
+                case 'tool_use':
+                  return {
+                    bg: 'rgba(225, 112, 85, 0.05)',
+                    border: 'rgba(225, 112, 85, 0.15)',
+                  };
+                case 'tool_result':
+                  return event.isError
+                    ? {
+                      bg: 'rgba(255, 107, 107, 0.05)',
+                      border: 'rgba(255, 107, 107, 0.15)',
+                    }
+                    : {
+                      bg: 'rgba(81, 207, 102, 0.05)',
+                      border: 'rgba(81, 207, 102, 0.15)',
+                    };
+                case 'text':
+                default:
+                  return {
+                    bg: 'rgba(108, 92, 231, 0.05)',
+                    border: 'rgba(108, 92, 231, 0.15)',
+                  };
+              }
+            })();
+
             return (
-              <div key={i} className="sa-tl-row">
-                {/* Timeline line */}
-                <div className="sa-tl-line-col">
-                  <div className="sa-tl-line" />
-                  <div className={`sa-tl-dot ${event.type}`}>
-                    {dot.icon}
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="sa-tl-content">
-                  {/* Label + timestamp */}
-                  <div className="sa-tl-header">
-                    <span className="sa-tl-label" style={{ color: dot.color }}>
-                      {dot.label}
-                    </span>
-                    {event.timestamp && (
-                      <span className="sa-tl-time">{formatTime(event.timestamp)}</span>
-                    )}
-                  </div>
-
-                  {/* Event body */}
-                  <div className={`sa-tl-body sa-tl-type-${event.type}`}>
-                    {event.type === 'thinking' ? (
-                      <div className="thinking-text">{event.content}</div>
-                    ) : event.type === 'text' ? (
-                      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {event.content}
-                      </div>
-                    ) : (
-                      <pre className="tl-tool-json">
-                        {truncateContent(event.content, event.type)}
-                      </pre>
-                    )}
-                  </div>
-                </div>
+              <div
+                key={i}
+                className="sa-event-wrapper"
+                style={{
+                  background: color.bg,
+                  border: `1px solid ${color.border}`,
+                  borderRadius: 10,
+                  marginBottom: 8,
+                  overflow: 'hidden',
+                }}
+              >
+                <TimelineEventRow
+                  event={event}
+                  defaultExpanded={allExpanded}
+                />
               </div>
             );
           })}

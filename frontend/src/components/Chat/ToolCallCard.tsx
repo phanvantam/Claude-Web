@@ -18,6 +18,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import type { ToolCall } from '../../types';
+import { renderToolInput, ToolResultRenderer } from './ToolInputRenderers';
 
 interface ToolCallCardProps {
   toolCall: ToolCall & { streamingInput?: string };
@@ -86,10 +87,15 @@ const getToolSummary = (toolCall: ToolCall): string => {
     }
     case 'Agent':
     case 'Task': {
-      // Sub-agent — hiện type + description
-      const agentType = input.subagent_type || input.agent_type || input.type || '';
-      const desc = input.description || '';
-      return [agentType, desc].filter(Boolean).join(': ') || 'Sub Agent';
+      // Sub-agent — ưu tiên tên thực từ name, fallback sang subagent_type, type
+      const agentName = String(
+        input.name
+        || input.subagent_type
+        || input.agent_type
+        || input.type
+        || '',
+      );
+      return agentName || 'Sub Agent';
     }
     default:
       return Object.keys(input).length > 0
@@ -253,7 +259,9 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
             ) : (
               <>
                 <span className="tl-tool-label">INPUT</span>
-                <pre className="tl-tool-json">{JSON.stringify(toolCall.input, null, 2)}</pre>
+                {renderToolInput(toolCall.name, toolCall.input) || (
+                  <pre className="tl-tool-json">{JSON.stringify(toolCall.input, null, 2)}</pre>
+                )}
               </>
             )}
           </div>
@@ -262,7 +270,10 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, isFinalized = fal
               <span className={`tl-tool-label ${isError ? 'error' : 'success'}`}>
                 {isError ? 'ERROR' : 'RESULT'}
               </span>
-              <pre className="tl-tool-json">{toolCall.result}</pre>
+              <ToolResultRenderer
+                toolName={toolCall.name}
+                result={toolCall.result}
+              />
             </div>
           )}
         </div>

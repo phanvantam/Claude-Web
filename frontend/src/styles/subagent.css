@@ -35,7 +35,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  /* Xóa overflow: hidden để inline timeline được scroll */
   margin: 4px 0;
 }
 
@@ -53,7 +53,6 @@
   gap: 8px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.02);
-  cursor: pointer;
   border-bottom: 1px solid var(--border);
   transition: background 0.2s;
 }
@@ -207,7 +206,109 @@
 }
 
 /* ========================================
-   SUB-AGENT TIMELINE MODAL
+   SUB-AGENT TIMELINE MODAL — NEW STYLES
+   ======================================== */
+.subagent-timeline-modal {
+  padding: 4px 0;
+}
+
+/* Event item — collapsible card styled như chat message */
+.sa-event-item {
+  transition: box-shadow 0.2s;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.sa-event-item:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Header row của event item */
+.sa-event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.sa-event-icon {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.sa-event-role {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5;
+}
+
+.sa-event-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.sa-event-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sa-event-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sa-event-toggle {
+  color: var(--text-muted);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+}
+
+/* Body row của event item */
+.sa-event-body {
+  padding: 0 12px 10px;
+}
+
+/* Tool content parsed — key: value rows */
+.sa-tool-row {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.sa-tool-row:last-child {
+  border-bottom: none;
+}
+
+.sa-tool-key {
+  color: var(--text-muted);
+  min-width: 80px;
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.sa-tool-val {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+/* ========================================
+   SUB-AGENT TIMELINE (legacy — keep for backward compat)
    ======================================== */
 .subagent-timeline {
   display: flex;
@@ -248,28 +349,36 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--bg-primary);
+  /* Gradient accent nổi bật so với timeline phía sau modal */
+  background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 50%, #6c5ce7 100%);
+  background-size: 200% 200%;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 8px 2px rgba(108, 92, 231, 0.35);
+  color: #fff;
 }
 
 .sa-tl-dot.thinking {
-  border-color: rgba(241, 196, 15, 0.3);
+  background: linear-gradient(135deg, #f1c40f 0%, #f9e79f 50%, #f1c40f 100%);
+  box-shadow: 0 0 8px 2px rgba(241, 196, 15, 0.35);
 }
 
 .sa-tl-dot.tool_use {
-  border-color: rgba(225, 112, 85, 0.3);
+  background: linear-gradient(135deg, #e17055 0%, #fab1a0 50%, #e17055 100%);
+  box-shadow: 0 0 8px 2px rgba(225, 112, 85, 0.35);
 }
 
 .sa-tl-dot.tool_result {
-  border-color: rgba(81, 207, 102, 0.3);
+  background: linear-gradient(135deg, #51cf66 0%, #b8e994 50%, #51cf66 100%);
+  box-shadow: 0 0 8px 2px rgba(81, 207, 102, 0.35);
 }
 
 .sa-tl-dot.text {
-  border-color: rgba(108, 92, 231, 0.3);
+  background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 50%, #6c5ce7 100%);
+  background-size: 200% 200%;
+  box-shadow: 0 0 8px 2px rgba(108, 92, 231, 0.35);
 }
 
 .sa-tl-content {
@@ -313,5 +422,281 @@
 .sa-tl-type-tool_result .tl-tool-json {
   margin-top: 4px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Inline timeline trong SubAgentResultCard */
+.subagent-inline-timeline {
+  padding: 8px 10px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subagent-timeline-detail-btn {
+  align-self: flex-start;
+  background: rgba(108, 92, 231, 0.12);
+  border: 1px solid rgba(108, 92, 231, 0.25);
+  border-radius: 6px;
+  color: var(--accent-light);
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.subagent-timeline-detail-btn:hover {
+  background: rgba(108, 92, 231, 0.2);
+}
+
+.subagent-timeline-loading {
+  display: flex;
+  align-items: center;
+  padding: 6px 2px;
+}
+
+.subagent-timeline-events {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px;
+  min-width: 0;
+}
+
+.subagent-timeline-events > * {
+  min-width: 0;
+}
+
+.subagent-timeline-events::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subagent-timeline-events::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.subagent-timeline-events::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.inline-event-item {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid rgba(108, 92, 231, 0.35);
+  background: rgba(255, 255, 255, 0.03);
+  box-sizing: border-box;
+}
+
+.inline-event-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.inline-event-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.inline-event-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.inline-event-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-width: 16px;
+  flex: 0 0 16px;
+  font-size: 12px;
+}
+
+.inline-event-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-event-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-width: 16px;
+  flex: 0 0 16px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.inline-event-preview {
+  width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-event-body {
+  margin-top: 2px;
+  padding: 8px 10px 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inline-event-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.inline-event-tool-data {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inline-tool-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.inline-tool-key {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-tool-val {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.inline-event-raw {
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  box-sizing: border-box;
+  max-width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+@media (max-width: 768px) {
+  .inline-event-header {
+    padding: 7px 8px;
+  }
+
+  .inline-event-label {
+    font-size: 9px;
+  }
+
+  .inline-event-preview {
+    font-size: 10px;
+  }
+
+  .inline-tool-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+/* Badge tên agent — hiển trong content column, cạnh agent name */
+.tl-dot-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(108, 92, 231, 0.1);
+  border: 1px solid rgba(108, 92, 231, 0.2);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-dot-label.error {
+  color: #ffb0b0;
+  border-color: rgba(255, 107, 107, 0.3);
+  background: rgba(255, 107, 107, 0.12);
+}
+
+.tl-dot-label.success {
+  color: #b2f2bb;
+  border-color: rgba(81, 207, 102, 0.28);
+  background: rgba(81, 207, 102, 0.1);
+}
+
+/* Dot wrap: flex để icon + label nằm ngang, đặt trong line column area */
+.tl-dot-wrap {
+  position: absolute;
+  left: -23px;
+  top: 4px;
+  display: flex;
+  align-items: center;
+  /* Không đè sang content column */
+  width: max-content;
+  max-width: 180px;
+}
+
+.tl-dot-wrap .tl-dot {
+  position: static;
+  left: auto;
+  top: auto;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .tl-dot-label {
+    max-width: 90px;
+  }
 }
 

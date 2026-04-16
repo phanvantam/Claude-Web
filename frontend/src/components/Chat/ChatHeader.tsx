@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Popover, Badge, Tooltip, Dropdown } from 'antd';
+import { Button, Popover, Badge, Tooltip, Dropdown, Popconfirm } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   FolderOutlined,
@@ -26,6 +26,7 @@ interface ChatHeaderProps {
   onOpenSubAgentDrawer: () => void;
   statsContent: React.ReactNode;
   onClearMessages: () => void;
+  onDeleteSession: () => void;
   planCount: number;
   onOpenPlanDrawer: () => void;
   onNavigateToProject: (projectId?: string) => void;
@@ -46,6 +47,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   onOpenSubAgentDrawer,
   statsContent,
   onClearMessages,
+  onDeleteSession,
   planCount,
   onOpenPlanDrawer,
   onNavigateToProject,
@@ -85,6 +87,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
       icon: <DeleteOutlined />,
       label: 'Xóa tin nhắn',
       onClick: onClearMessages,
+      danger: false,
+    },
+    {
+      key: 'delete-session',
+      icon: <DeleteOutlined />,
+      label: 'Xóa cuộc hội thoại',
+      onClick: onDeleteSession,
       danger: true,
     },
   ];
@@ -149,14 +158,22 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           />
         </Popover>
 
-        <Button
-          type="text"
-          icon={<DeleteOutlined />}
-          onClick={onClearMessages}
-          style={{ color: 'rgba(255,255,255,0.4)' }}
-          title="Xóa tin nhắn"
-          size="small"
-        />
+        <Popconfirm
+          title="Xóa cuộc hội thoại này?"
+          description="Tin nhắn và dữ liệu liên quan sẽ bị xoá vĩnh viễn."
+          onConfirm={onDeleteSession}
+          okText="Xóa"
+          cancelText="Huỷ"
+          okButtonProps={{ danger: true }}
+        >
+          <Button
+            type="text"
+            icon={<DeleteOutlined />}
+            style={{ color: 'rgba(255,255,255,0.4)' }}
+            title="Xóa cuộc hội thoại"
+            size="small"
+          />
+        </Popconfirm>
       </div>
 
       {/* Mobile: thu gọn vào Dropdown */}
