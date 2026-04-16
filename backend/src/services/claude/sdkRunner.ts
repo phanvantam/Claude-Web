@@ -507,13 +507,16 @@ export async function runSDKQuery(
   };
 
   try {
+    const claudeBinary = utils.getClaudeBinary();
     logger.info(`[Claude][${sessionId}] [T+${getElapsed()}] Starting sdk.query (string prompt)...`);
+    logger.info(`[Claude][${sessionId}] Binary: ${claudeBinary}, permissionMode: ${options.permissionMode}, promptLength: ${effectivePrompt.length}`);
+
     // claude-agent-sdk: dùng string prompt trực tiếp, SDK tự đóng stdin → không treo pipe
     queryInstance = sdk.query({
       prompt: effectivePrompt,
       options,
       // Đưa pathToClaudeCodeExecutable ra ngoài cấp root của object cấu hình
-      pathToClaudeCodeExecutable: utils.getClaudeBinary()
+      pathToClaudeCodeExecutable: claudeBinary
     });
 
     // Lưu query instance vào state — abortSession sẽ gọi interrupt() để kill CLI process

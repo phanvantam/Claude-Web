@@ -158,6 +158,9 @@ export class ClaudeService extends EventEmitter {
       customArgs: config.customArgs,
     }, state, this).catch((err) => {
       logger.error(`[ClaudeService] SDK query error for ${sessionId}:`, err);
+      logger.error(
+        `[ClaudeService] Error details for ${sessionId}: name=${err?.name || 'n/a'}, message=${err?.message || String(err)}, cause=${err?.cause ? String(err.cause) : 'n/a'}`,
+      );
       this.emit('error', { sessionId, error: err.message || String(err) });
 
       // Dọn sạch state xử lý để phiên không bị kẹt sau khi SDK crash.
