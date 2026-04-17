@@ -175,6 +175,7 @@
   max-width: 100%;
   word-wrap: break-word;
   font-weight: 400;
+  white-space: pre-line;
 }
 
 .tl-user-row .tl-time {
