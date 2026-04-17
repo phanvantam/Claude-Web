@@ -360,6 +360,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             return null;
           }
 
+          // Skip Agent/Task tools — hiển thị riêng ở agent dot, không vào timeline tool chung
+          if (block.type === 'tool_use' && ((block as any).tool?.name === 'Agent' || (block as any).tool?.name === 'Task')) {
+            return null;
+          }
+
           if (block.type === 'thinking') {
             return (
               <CollapsibleBlock

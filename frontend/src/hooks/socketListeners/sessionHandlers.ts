@@ -131,8 +131,10 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     if (data.state?.effortLevel) setSessionEffortLevelState(data.state.effortLevel);
     if (data.state?.permissionMode) setSessionPermissionModeState(data.state.permissionMode);
 
+    // Chỉ restore AskUser khi session đang "chạy dở" (isProcessing=true).
+    // Nếu wasProcessing=false → session đã kết thúc bình thường, không có AskUser nào đang chờ.
     const restoredPendingPermission = data.state?.pendingPermission;
-    const isRestoredAskUser = restoredPendingPermission?.toolName === 'AskUserQuestion';
+    const isRestoredAskUser = wasProcessing && restoredPendingPermission?.toolName === 'AskUserQuestion';
 
     if (isRestoredAskUser) {
       const input = restoredPendingPermission?.input || {};
@@ -150,7 +152,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
       if (restoredPendingPermission) setPendingPermission(restoredPendingPermission);
       else setPendingPermission(null);
 
-      if (data.state?.pendingAskUser) setPendingAskUser(data.state.pendingAskUser);
+      if (data.state?.pendingAskUser && wasProcessing) setPendingAskUser(data.state.pendingAskUser);
       else setPendingAskUser(null);
     }
 

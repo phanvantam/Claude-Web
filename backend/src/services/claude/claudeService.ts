@@ -11,6 +11,133 @@ import { runSDKQuery } from './sdkRunner';
 import { compactSession as compactSessionHandler } from './compact';
 import * as subAgentManager from './subAgentManager';
 
+/**
+ * Lấy danh sách câu hỏi gốc để map về answers theo định dạng SDK yêu cầu.
+ */
+function collectQuestionTexts(originalInput: Record<string, unknown>): string[] {
+  const questions = Array.isArray((originalInput as any).questions)
+    ? ((originalInput as any).questions as Array<Record<string, unknown>>)
+    : [];
+  const fromQuestions = questions
+    .map((q) => (typeof q?.question === 'string' ? q.question.trim() : ''))
+    .filter(Boolean);
+  if (fromQuestions.length > 0) return fromQuestions;
+
+  const single = typeof (originalInput as any).question === 'string'
+    ? String((originalInput as any).question).trim()
+    : '';
+  return single ? [single] : [];
+}
+
+/**
+ * Chuẩn hóa một giá trị answer bất kỳ thành string.
+ */
+function toAnswerString(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
+/**
+ * Sinh answers map từ payload frontend để tương thích AskUserQuestion của SDK.
+ */
+function buildAnswersMap(
+  questionTexts: string[],
+  parsedRecord: Record<string, unknown>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  const parsedAnswers = parsedRecord.answers;
+
+  if (parsedAnswers && typeof parsedAnswers === 'object' && !Array.isArray(parsedAnswers)) {
+    for (const [question, answerValue] of Object.entries(parsedAnswers as Record<string, unknown>)) {
+      const normalizedQuestion = question.trim();
+      const value = toAnswerString(answerValue);
+      if (normalizedQuestion) result[normalizedQuestion] = value;
+    }
+  }
+
+  const normalizeArrayByQuestion = (arr: unknown[]) => {
+    for (let i = 0; i < arr.length; i += 1) {
+      const item = arr[i];
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const question = typeof (item as any).question === 'string' ? (item as any).question.trim() : '';
+        const value = toAnswerString((item as any).answer);
+        if (question) result[question] = value;
+        continue;
+      }
+      const question = questionTexts[i];
+      const value = toAnswerString(item);
+      if (question) result[question] = value;
+    }
+  };
+
+  if (Array.isArray(parsedAnswers)) normalizeArrayByQuestion(parsedAnswers);
+
+  const parsedAnswer = parsedRecord.answer;
+  if (Array.isArray(parsedAnswer)) {
+    normalizeArrayByQuestion(parsedAnswer);
+  } else if (parsedAnswer && typeof parsedAnswer === 'object') {
+    for (const [question, answerValue] of Object.entries(parsedAnswer as Record<string, unknown>)) {
+      const normalizedQuestion = question.trim();
+      const value = toAnswerString(answerValue);
+      if (normalizedQuestion) result[normalizedQuestion] = value;
+    }
+  } else {
+    const firstQuestion = questionTexts[0];
+    const value = toAnswerString(parsedAnswer);
+    if (firstQuestion && !result[firstQuestion]) result[firstQuestion] = value;
+  }
+
+  return result;
+}
+
+/**
+ * Chuẩn hóa payload AskUser để luôn có answer + answers đúng định dạng SDK.
+ */
+function normalizeAskUserUpdatedInput(
+  rawAnswer: string,
+  originalInput: Record<string, unknown>,
+): Record<string, unknown> {
+  const trimmed = rawAnswer.trim();
+  const questionTexts = collectQuestionTexts(originalInput);
+  const fallbackAnswers = questionTexts[0] ? { [questionTexts[0]]: trimmed } : {};
+  const fallback = { ...originalInput, answer: trimmed, answers: fallbackAnswers };
+  if (!trimmed) return fallback;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'string') {
+      const plain = parsed.trim() || trimmed;
+      const answers = questionTexts[0] ? { [questionTexts[0]]: plain } : {};
+      return { ...originalInput, answer: plain, answers };
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return fallback;
+    }
+
+    const parsedRecord = parsed as Record<string, unknown>;
+    const answers = buildAnswersMap(questionTexts, parsedRecord);
+    const normalizedAnswer = Object.values(answers).join('; ') || toAnswerString(parsedRecord.answer) || trimmed;
+
+    return {
+      ...originalInput,
+      ...parsedRecord,
+      answer: normalizedAnswer,
+      answers,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export class ClaudeService extends EventEmitter {
   private sessions: Map<string, ClaudeSessionState> = new Map();
 
@@ -308,19 +435,28 @@ export class ClaudeService extends EventEmitter {
    */
   resolveAskUser(sessionId: string, answer: string): void {
     const state = this.sessions.get(sessionId);
-    if (!state || !state.pendingPermission || state.pendingPermission.toolName !== 'AskUserQuestion') {
+    if (!state) {
+      logger.warn(`[Claude] No session ${sessionId}`);
+      return;
+    }
+    if (!state.pendingPermission || state.pendingPermission.toolName !== 'AskUserQuestion') {
       logger.warn(`[Claude] No pending AskUserQuestion for ${sessionId}`);
       return;
     }
 
-    const { resolve } = state.pendingPermission;
+    // Prevent double-resolve: guard against multiple resolves (e.g., signal.abort + manual respond race)
+    const pending = state.pendingPermission;
     state.pendingPermission = undefined;
 
-    logger.info(`[Claude][${sessionId}] AskUserQuestion answered: ${answer.slice(0, 100)}`);
-    // Trả answer qua allow + updatedInput để không bị đánh dấu error
-    resolve({
+    const normalizedInput = normalizeAskUserUpdatedInput(answer, pending.input || {});
+    const normalizedAnswer = typeof normalizedInput.answer === 'string'
+      ? normalizedInput.answer
+      : answer.trim();
+
+    logger.info(`[Claude][${sessionId}] AskUserQuestion answered: ${normalizedAnswer.slice(0, 100)}`);
+    pending.resolve({
       behavior: 'allow',
-      updatedInput: { answer }
+      updatedInput: normalizedInput,
     });
   }
 

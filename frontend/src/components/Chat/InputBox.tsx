@@ -23,6 +23,7 @@ import HelpIcon from './InputBox/HelpIcon';
 import AskUserPanel from './InputBox/AskUserPanel';
 import PermissionPanel from './InputBox/PermissionPanel';
 import SlashCommandPopup from './InputBox/SlashCommandPopup';
+import AgentListPanel from './InputBox/AgentListPanel';
 
 
 const InputBox: React.FC<InputBoxProps> = ({
@@ -366,27 +367,14 @@ const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {/* @Agent mention popup — tương tự slash-menu, trigger bằng '@' */}
+      {/* @Agent panel — component riêng, không dùng chung popup với slash command */}
       {showAgentMenu && filteredAgents.length > 0 && (
-        <SlashCommandPopup
-          title="Agents"
+        <AgentListPanel
           menuRef={agentMenuRef}
+          agents={filteredAgents}
           activeIndex={agentIndex}
-          items={filteredAgents.map((a, i) => ({
-            key: `${a.scope || 'user'}-${a.name}`,
-            cmd: `@${a.name}`,
-            desc: a.description || a.name,
-            source: a.scope && a.scope !== 'user' ? a.scope : undefined,
-            onSelect: () => insertAgent(a.name),
-            onHover: () => setAgentIndex(i),
-            helpContent: a.description ? (
-              <span>
-                {a.description}
-                {a.model && <span style={{ display: 'block', marginTop: 4, color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Model: {a.model}</span>}
-                {a.tools && a.tools.length > 0 && <span style={{ display: 'block', marginTop: 2, color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Tools: {a.tools.join(', ')}</span>}
-              </span>
-            ) : undefined,
-          }))}
+          onHover={setAgentIndex}
+          onSelect={insertAgent}
         />
       )}
 

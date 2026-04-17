@@ -119,9 +119,49 @@ export function handleStreamEvent(args: StreamEventContext): void {
 
   // Stream events của sub-agent
   if (parentId) {
+    const upsertSubAgentLiveBlock = (opts?: { appendText?: string; toolName?: string }) => {
+      const idx = ctx.turnBlocks.findIndex((b: any) =>
+        b.type === 'subagent_result' && b.parentToolUseId === parentId,
+      );
+      const existing = idx >= 0 ? (ctx.turnBlocks[idx] as any) : null;
+      const currentText = ctx.subAgentLiveTextMap.get(parentId) || '';
+      const nextText = opts?.appendText ? `${currentText}${opts.appendText}` : currentText;
+      ctx.subAgentLiveTextMap.set(parentId, nextText);
+
+      const activities = ctx.subAgentActivityMap.get(parentId) || existing?.activities || [];
+      const fallbackText = opts?.toolName
+        ? `Đang chạy ${opts.toolName}...`
+        : activities.length > 0
+          ? `Đang chạy ${activities[activities.length - 1].name}...`
+          : 'Đang thực thi...';
+
+      const nextBlock = {
+        type: 'subagent_result' as const,
+        agentName: ctx.subAgentNames.get(parentId) || existing?.agentName || state.activeSubAgent?.name || 'Sub Agent',
+        result: nextText.trim() || existing?.result || fallbackText,
+        isError: existing?.isError,
+        activities: [...activities],
+        usage: existing?.usage,
+        agentId: existing?.agentId,
+        parentToolUseId: parentId,
+      };
+
+      if (idx >= 0) ctx.turnBlocks[idx] = nextBlock;
+      else ctx.turnBlocks.push(nextBlock);
+
+      state.partialAssistantBlocks = [...ctx.turnBlocks];
+      state.partialToolCalls = [...ctx.turnToolCalls];
+      state.partialAssistantContent = ctx.turnTextParts.join('');
+      emitter.emit('stream:blocks', {
+        sessionId,
+        blocks: ctx.turnBlocks,
+      });
+    };
+
     if (evType === 'content_block_start') {
       const cb = rawEvent.content_block;
       if (cb?.type === 'tool_use') {
+        ctx.subAgentStreamEventParents.add(parentId);
         if (state.activeSubAgent) {
           state.activeSubAgent = {
             ...state.activeSubAgent,
@@ -129,23 +169,34 @@ export function handleStreamEvent(args: StreamEventContext): void {
             lastHeartbeat: Date.now(),
           };
         }
+        const toolName = cb.name || 'unknown';
+        const toolId = cb.id || '';
+        const activities = ctx.subAgentActivityMap.get(parentId) || [];
+        if (!activities.some((a: any) => a.toolId && toolId && a.toolId === toolId)) {
+          activities.push({ toolId, name: toolName, input: {} });
+          ctx.subAgentActivityMap.set(parentId, activities);
+        }
+
+        upsertSubAgentLiveBlock({ toolName });
         emitter.emit('subagent:activity', {
           sessionId,
           parentToolUseId: parentId,
           type: 'tool_start',
-          toolName: cb.name || 'unknown',
-          toolId: cb.id || '',
+          toolName,
+          toolId,
         });
       }
     } else if (evType === 'content_block_delta') {
       const delta = rawEvent.delta;
       if (delta?.type === 'text_delta' && delta.text) {
+        ctx.subAgentStreamEventParents.add(parentId);
         if (state.activeSubAgent) {
           state.activeSubAgent = {
             ...state.activeSubAgent,
             lastHeartbeat: Date.now(),
           };
         }
+        upsertSubAgentLiveBlock({ appendText: delta.text });
         emitter.emit('subagent:activity', {
           sessionId,
           parentToolUseId: parentId,

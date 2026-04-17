@@ -30,6 +30,10 @@ export interface TurnContext {
   turnStartedAt: number;
   subAgentActivityMap: Map<string, any[]>;
   subAgentNames: Map<string, string>;
+  /** Text delta realtime theo từng parent tool use id của sub-agent */
+  subAgentLiveTextMap: Map<string, string>;
+  /** parent_tool_use_id đã nhận stream_event để tránh nhân đôi text từ assistant snapshot */
+  subAgentStreamEventParents: Set<string>;
   activeStreamBlock: {
     index: number;
     type: 'text' | 'thinking' | 'tool_use';
@@ -84,12 +88,58 @@ export function handleAssistantEvent(
   // Assistant event chỉ cần tích lũy vào ctx (cho finalize), KHÔNG emit stream nữa.
   const skipEmit = ctx.hasReceivedStreamEvents && !isInsideSubAgent;
 
+  const upsertSubAgentLiveBlock = (parentId: string, fallbackToolName?: string) => {
+    const idx = ctx.turnBlocks.findIndex((b: ContentBlock) =>
+      b.type === 'subagent_result' && (b as any).parentToolUseId === parentId,
+    );
+    const existing = idx >= 0 ? (ctx.turnBlocks[idx] as any) : null;
+    const activities = ctx.subAgentActivityMap.get(parentId) || existing?.activities || [];
+    const liveText = (ctx.subAgentLiveTextMap.get(parentId) || '').trim();
+    const fallbackText = fallbackToolName
+      ? `Đang chạy ${fallbackToolName}...`
+      : activities.length > 0
+        ? `Đang chạy ${activities[activities.length - 1].name}...`
+        : 'Đang thực thi...';
+
+    const nextBlock: ContentBlock = {
+      type: 'subagent_result',
+      agentName: ctx.subAgentNames.get(parentId) || existing?.agentName || state.activeSubAgent?.name || 'Sub Agent',
+      result: liveText || existing?.result || fallbackText,
+      activities: [...activities],
+      isError: existing?.isError,
+      usage: existing?.usage,
+      agentId: existing?.agentId,
+      parentToolUseId: parentId,
+    };
+
+    if (idx >= 0) ctx.turnBlocks[idx] = nextBlock;
+    else ctx.turnBlocks.push(nextBlock);
+  };
 
   for (const block of apiMsg.content) {
     if (block.type === 'text' && block.text) {
       if (isInsideSubAgent) {
-        // Text từ sub-agent — không stream lên timeline chính
         logger.debug(`[Claude][${sessionId}] Sub-agent text (parent=${parentToolUseId}, len=${block.text.length})`);
+
+        // Khi stream_event đã xử lý parent này, assistant text chỉ là snapshot lặp lại.
+        if (!ctx.subAgentStreamEventParents.has(parentToolUseId)) {
+          const prev = ctx.subAgentLiveTextMap.get(parentToolUseId) || '';
+          ctx.subAgentLiveTextMap.set(parentToolUseId, `${prev}${block.text}`);
+          upsertSubAgentLiveBlock(parentToolUseId);
+          syncPartialTurnToState();
+
+          emitter.emit('subagent:activity', {
+            sessionId,
+            parentToolUseId,
+            type: 'text_delta',
+            text: block.text,
+          });
+
+          emitter.emit('stream:blocks', {
+            sessionId,
+            blocks: ctx.turnBlocks,
+          });
+        }
       } else {
         ctx.turnTextParts.push(block.text);
         ctx.turnBlocks.push({ type: 'text', text: block.text });
@@ -117,26 +167,68 @@ export function handleAssistantEvent(
         input: block.input || {},
       };
 
+      // Dedupe tool_use: SDK có thể lặp lại cùng tool block trong assistant events.
+      const seenById = !!block.id && (
+        ctx.turnToolCalls.some((t: ToolCall) => t.id === block.id)
+        || ctx.turnBlocks.some((b: ContentBlock) => b.type === 'tool_use' && b.tool.id === block.id)
+        || ctx.subAgentNames.has(block.id)
+      );
+      const seenByShape = !block.id && ctx.turnBlocks.some((b: ContentBlock) => {
+        if (b.type !== 'tool_use') return false;
+        if (b.tool.result !== undefined) return false;
+        if (b.tool.name !== tc.name) return false;
+        return JSON.stringify(b.tool.input || {}) === JSON.stringify(tc.input || {});
+      });
+      if (seenById || seenByShape) {
+        logger.debug(`[Claude][${sessionId}] Skip duplicated tool_use: name=${tc.name}, id=${block.id || 'none'}`);
+        continue;
+      }
+
       // Sub-agent invocation: tool 'Agent' (hoặc 'Task' ở SDK cũ)
       const toolNameLower = block.name?.toLowerCase();
       if (toolNameLower === 'agent' || toolNameLower === 'task') {
         const agentName = block.input?.subagent_type || block.input?.agent_type || block.input?.type || 'Sub Agent';
+        const initialPrompt = typeof block.input?.description === 'string' ? block.input.description : '';
+
         ctx.subAgentNames.set(tc.id, agentName);
         ctx.subAgentActivityMap.set(tc.id, []);
+        ctx.subAgentLiveTextMap.set(tc.id, '');
         ctx.turnBlocks.push({ type: 'tool_use', tool: tc });
+
+        // Placeholder để dot-subagent-result xuất hiện ngay khi sub-agent bắt đầu chạy.
+        // Dùng upsert để tránh tạo block trùng nếu stream_event đến sớm hơn assistant event.
+        upsertSubAgentLiveBlock(tc.id);
+
         syncPartialTurnToState();
         state.activeSubAgent = {
           name: agentName,
-          prompt: block.input?.description || '',
+          prompt: initialPrompt,
           lastHeartbeat: Date.now(),
           activities: [],
         };
-        emitter.emit('subagent:started', { sessionId, agentName, prompt: block.input?.description || '' });
+        emitter.emit('subagent:started', { sessionId, agentName, prompt: initialPrompt });
+        if (!isInsideSubAgent) {
+          emitter.emit('stream:blocks', {
+            sessionId,
+            blocks: ctx.turnBlocks,
+          });
+        }
       } else if (isInsideSubAgent) {
         // Tool call nội bộ của sub-agent — track activity + emit cho frontend live preview
+        const fromStreamEvent = ctx.subAgentStreamEventParents.has(parentToolUseId);
         const activities = ctx.subAgentActivityMap.get(parentToolUseId) || [];
-        activities.push({ name: tc.name, input: tc.input });
-        ctx.subAgentActivityMap.set(parentToolUseId, activities);
+
+        if (!fromStreamEvent) {
+          activities.push({ toolId: tc.id, name: tc.name, input: tc.input });
+          ctx.subAgentActivityMap.set(parentToolUseId, activities);
+          upsertSubAgentLiveBlock(parentToolUseId, tc.name);
+          syncPartialTurnToState();
+          emitter.emit('stream:blocks', {
+            sessionId,
+            blocks: ctx.turnBlocks,
+          });
+        }
+
         // Emit ngay để frontend cập nhật phần mở rộng Agent card
         // Extract thông tin chính từ input để hiển thị chi tiết
         const inputSummary = extractToolInputSummary(tc.name, tc.input);

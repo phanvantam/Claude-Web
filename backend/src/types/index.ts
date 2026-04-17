@@ -67,6 +67,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 /** Một tool call nội bộ của sub-agent — dùng để hiển thị trong collapsible section */
 export interface SubAgentActivity {
+  toolId?: string;
   name: string;
   input: Record<string, unknown>;
   result?: string;
@@ -77,14 +78,15 @@ export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; tool: ToolCall }
   | { type: 'thinking'; thinking: string }
-  | { 
-      type: 'subagent_result'; 
-      agentName: string; 
-      result: string; 
-      isError?: boolean; 
+  | {
+      type: 'subagent_result';
+      agentName: string;
+      result: string;
+      isError?: boolean;
       activities?: SubAgentActivity[];
       usage?: { tokens: number; tools: number; durationMs: number };
       agentId?: string;
+      parentToolUseId?: string;
     };
 
 export interface ChatMessage {

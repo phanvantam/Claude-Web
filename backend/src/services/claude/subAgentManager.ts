@@ -117,7 +117,7 @@ function extractResultText(result: any): string {
             .replace(/<usage>[\s\S]*?<\/usage>/gi, '')
             .replace(/\n/g, ' ')
             .trim();
-          return cleaned.slice(0, 120).trim();
+          return cleaned.trim();
         }
       }
     } catch { /* JSON truncate — dùng indexOf */ }
@@ -136,8 +136,7 @@ function extractResultText(result: any): string {
         .replace(/\\"/g, '"')
         .replace(/\\t/g, ' ')
         .replace(/\.\.\.$/g, '')
-        .trim()
-        .slice(0, 120);
+        .trim();
     }
   }
 
@@ -147,7 +146,7 @@ function extractResultText(result: any): string {
     .replace(/<usage>[\s\S]*?<\/usage>/gi, '')
     .trim();
 
-  return stripped.slice(0, 120).replace(/\n/g, ' ').trim();
+  return stripped.replace(/\n/g, ' ').trim();
 }
 
 /**
@@ -187,8 +186,8 @@ function getSubAgentTimelineFromDB(sessionId: string, agentId: string): any[] {
             events.push({
               type: 'tool_result',
               content: typeof act.result === 'string'
-                ? act.result.slice(0, 300)
-                : JSON.stringify(act.result).slice(0, 300),
+                ? act.result
+                : JSON.stringify(act.result),
               isError: !!act.isError,
               timestamp: msg.timestamp,
             });

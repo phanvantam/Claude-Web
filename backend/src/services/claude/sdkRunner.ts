@@ -188,6 +188,8 @@ export async function runSDKQuery(
     turnStartedAt: Date.now(),
     subAgentActivityMap: new Map(),
     subAgentNames: new Map(),
+    subAgentLiveTextMap: new Map(),
+    subAgentStreamEventParents: new Set(),
     activeStreamBlock: null,
     hasReceivedStreamEvents: false,
   };

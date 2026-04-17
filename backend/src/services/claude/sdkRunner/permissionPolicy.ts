@@ -1,3 +1,4 @@
+import os from 'os';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { ClaudeSessionState, SDKQueryConfig } from '../types';
@@ -13,7 +14,11 @@ import { isAbortRequested } from './runtimeControl';
 export type ToolRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 /** Chuẩn hóa path về slash `/` để so sánh ổn định cross-platform. */
-export const normalizePath = (v: string) => v.replace(/\\/g, '/');
+/** Expand ~ to home directory and normalize slashes. */
+const normalizePath = (v: string) => {
+  const expanded = v.startsWith('~/') ? v.replace(/^~/, os.homedir()) : v;
+  return expanded.replace(/\\/g, '/');
+};
 
 /** Xác định risk level của tool hiện tại. */
 export function getToolRiskLevel(tool: string): ToolRiskLevel {
@@ -58,6 +63,7 @@ export function enforceProjectPlanPath(
   const projectPlansDir = path.resolve(ctx.config.cwd, '.claude', 'plans');
   const projectPlansDirWithSlash = `${projectPlansDir}/`;
   const normalizedProjectPlansDir = normalizePath(projectPlansDirWithSlash).replace(/\/+/g, '/');
+  const projectPlansDirLower = normalizedProjectPlansDir.toLowerCase();
 
   const normalizedRawPath = normalizePath(rawFilePath);
   const lowerRawPath = normalizedRawPath.toLowerCase();
@@ -65,50 +71,53 @@ export function enforceProjectPlanPath(
   const baseNameLower = baseName.toLowerCase();
   const isMarkdown = baseNameLower.endsWith('.md');
   const looksLikePlanFile = isMarkdown && baseNameLower.includes('plan');
-  const targetsPlansFolder =
-    lowerRawPath.includes('/.claude/plans/') ||
-    lowerRawPath.startsWith('~/.claude/plans/') ||
-    lowerRawPath.startsWith('.claude/plans/') ||
-    lowerRawPath.startsWith('./.claude/plans/') ||
-    lowerRawPath.startsWith('plans/') ||
-    lowerRawPath.startsWith('./plans/');
 
-  if (!looksLikePlanFile && !targetsPlansFolder) return {};
+  // Detect if path belongs to ANY ~/.claude/plans/ (global) — always redirect to project dir
+  const globalHomeDir = os.homedir().toLowerCase();
+  const isGlobalPlansPath = lowerRawPath.startsWith(`${globalHomeDir}/.claude/plans/`)
+    || lowerRawPath.startsWith('~/.claude/plans/');
 
-  let relativePlanPath = baseName || 'IMPLEMENTATION_PLAN.md';
+  // Detect if path targets project-like plans folder (already correct)
+  const isProjectPlansPath = lowerRawPath.startsWith(normalizedProjectPlansDir.toLowerCase())
+    || lowerRawPath.startsWith('.claude/plans/')
+    || lowerRawPath.startsWith('./.claude/plans/')
+    || lowerRawPath.startsWith('plans/')
+    || lowerRawPath.startsWith('./plans/')
+    || lowerRawPath.includes('/.claude/plans/');
 
-  // Nếu input đã trỏ vào thư mục plans, preserve subpath.
-  if (targetsPlansFolder) {
-    const marker = '/.claude/plans/';
-    if (lowerRawPath.includes(marker)) {
-      relativePlanPath = normalizedRawPath.slice(lowerRawPath.lastIndexOf(marker) + marker.length) || relativePlanPath;
-    } else if (lowerRawPath.startsWith('~/.claude/plans/')) {
-      relativePlanPath = normalizedRawPath.slice('~/.claude/plans/'.length) || relativePlanPath;
-    } else if (lowerRawPath.startsWith('./.claude/plans/')) {
-      relativePlanPath = normalizedRawPath.slice('./.claude/plans/'.length) || relativePlanPath;
-    } else if (lowerRawPath.startsWith('.claude/plans/')) {
-      relativePlanPath = normalizedRawPath.slice('.claude/plans/'.length) || relativePlanPath;
-    } else if (lowerRawPath.startsWith('./plans/')) {
-      relativePlanPath = normalizedRawPath.slice('./plans/'.length) || relativePlanPath;
-    } else if (lowerRawPath.startsWith('plans/')) {
-      relativePlanPath = normalizedRawPath.slice('plans/'.length) || relativePlanPath;
+  if (!looksLikePlanFile && !isGlobalPlansPath && !isProjectPlansPath) return {};
+
+  // If the path is inside project's plans dir, allow with optional normalization
+  if (isProjectPlansPath && !isGlobalPlansPath) {
+    let relativePlanPath = baseName || 'IMPLEMENTATION_PLAN.md';
+    // Extract filename from any plans-path variant (use baseName which is already the filename)
+    const slashIdx = normalizedRawPath.lastIndexOf('/plans/');
+    if (slashIdx >= 0) relativePlanPath = normalizedRawPath.slice(slashIdx + '/plans/'.length) || relativePlanPath;
+    if (!relativePlanPath) relativePlanPath = 'IMPLEMENTATION_PLAN.md';
+    relativePlanPath = normalizePath(relativePlanPath).replace(/^\/+/, '').replace(/\.\./g, '');
+    if (!relativePlanPath.endsWith('.md')) relativePlanPath = `${relativePlanPath}.md`;
+    const resolvedPlanPath = path.resolve(projectPlansDir, relativePlanPath);
+    const finalPath = path.resolve(resolvedPlanPath);
+    if (normalizePath(rawFilePath) !== normalizePath(finalPath)) {
+      logger.info(`[Claude][${ctx.sessionId}] Enforce plan path: ${rawFilePath} -> ${finalPath}`);
+      (toolInput as any).file_path = finalPath;
     }
+    return {};
   }
 
-  relativePlanPath = normalizePath(relativePlanPath).replace(/^\/+/, '').replace(/\.\./g, '');
-  if (!relativePlanPath) relativePlanPath = 'IMPLEMENTATION_PLAN.md';
+  // If global plans path or plan-like filename: always redirect to project plans dir
+  let relativePlanPath = baseName || 'IMPLEMENTATION_PLAN.md';
   if (!relativePlanPath.endsWith('.md')) relativePlanPath = `${relativePlanPath}.md`;
+  relativePlanPath = normalizePath(relativePlanPath).replace(/^\/+/, '').replace(/\.\./g, '');
 
   const resolvedPlanPath = path.resolve(projectPlansDir, relativePlanPath);
   const normalizedResolvedPlanPath = normalizePath(path.resolve(resolvedPlanPath));
-  if (!normalizedResolvedPlanPath.startsWith(normalizedProjectPlansDir)) {
-    return { deniedMessage: `Đường dẫn plan không hợp lệ: ${rawFilePath}` };
+  if (!normalizedResolvedPlanPath.startsWith(projectPlansDirLower)) {
+    return { deniedMessage: `Invalid plan path: ${rawFilePath}` };
   }
 
-  if (normalizePath(rawFilePath) !== normalizePath(resolvedPlanPath)) {
-    logger.info(`[Claude][${ctx.sessionId}] Enforce plan path: ${rawFilePath} -> ${resolvedPlanPath}`);
-  }
-  (toolInput as any).file_path = resolvedPlanPath;
+  logger.info(`[Claude][${ctx.sessionId}] Enforce plan path: ${rawFilePath} -> ${resolvedPlanPath}`);
+  (toolInput as any).file_path = path.resolve(resolvedPlanPath);
   return {};
 }
 
@@ -151,7 +160,12 @@ export function buildCanUseToolHandler(ctx: CanUseToolContext) {
       return { behavior: 'deny' as const, message: planEnforce.deniedMessage };
     }
 
+    // Guard: nếu AskUserQuestion đang pending → deny để tránh duplicate call
     if (toolName === 'AskUserQuestion') {
+      if (state.pendingPermission?.toolName === 'AskUserQuestion') {
+        logger.warn(`[Claude][${sessionId}] AskUserQuestion already pending, denying duplicate call`);
+        return { behavior: 'deny' as const, message: 'AskUserQuestion đang chờ trả lời.' };
+      }
       logger.info(`[Claude][${sessionId}] AskUserQuestion detected, emitting askUser:question`);
       return new Promise<any>((resolve) => {
         if (signal.aborted) {
@@ -176,38 +190,22 @@ export function buildCanUseToolHandler(ctx: CanUseToolContext) {
     const normalizedProjectPlansDir = normalizePath(projectPlansDirWithSlash).replace(/\/+/g, '/');
 
     if (ctx.permissionMode === 'plan') {
-      // Chặn tuyệt đối các tool liên quan đến lập/triggers plan mode của Claude.
-      // Plan mode chỉ dùng để nghiên cứu + viết file kế hoạch, không được gọi plan tools khác.
       const planTools = /^(EnterPlanMode|ExitPlanMode)$/i;
       if (planTools.test(toolName)) {
-        logger.warn(`[Claude][${sessionId}] Plan mode: chặn tool kế hoạch ${toolName}`);
+        logger.warn(`[Claude][${sessionId}] Plan mode: deny tool ${toolName}`);
         return {
           behavior: 'deny' as const,
-          message: `Chế độ lập kế hoạch: không được gọi tool ${toolName}. Chỉ được phân tích code và ghi file kế hoạch.`,
+          message: `Plan Mode: calling ${toolName} is not allowed.`,
         };
       }
 
-      // Cho phép tool Agent nếu sub-agent KHÔNG chứa EnterPlanMode/ExitPlanMode trong allowedTools.
-      // Agent do user tạo phục vụ nghiên cứu vẫn được phép gọi.
-      if (/^Agent$/i.test(toolName)) {
-        const agentInput = input as any;
-        const allowedTools = Array.isArray(agentInput.allowedTools) ? agentInput.allowedTools : [];
-        const hasPlanTools = allowedTools.some((t: string) => planTools.test(t));
-        if (hasPlanTools) {
-          logger.warn(`[Claude][${sessionId}] Plan mode: chặn Agent vì sub-agent chứa plan tools`);
-          return {
-            behavior: 'deny' as const,
-            message: `Chế độ lập kế hoạch: sub-agent không được chứa EnterPlanMode hay ExitPlanMode.`,
-          };
-        }
-        logger.info(`[Claude][${sessionId}] Plan mode: cho phép Agent`);
-        return { behavior: 'allow' as const, updatedInput: input };
-      }
-
-      // Cho phép các tool read-only phục vụ nghiên cứu codebase
-      const allowedReadOnlyTools = /^(Read|Grep|Glob|WebFetch|WebSearch|ListMcpResourcesTool|ReadMcpResourceTool|mcp__.*__.*|smart_search|smart_outline|smart_unfold|search_graph|get_code_snippet|trace_path|query_graph|get_architecture|search_code)$/i;
-      if (allowedReadOnlyTools.test(toolName)) {
-        return { behavior: 'allow' as const, updatedInput: input };
+      const executionTools = /^(Bash|Monitor|TaskStop|ExitWorktree|EnterWorktree)$/i;
+      if (executionTools.test(toolName)) {
+        logger.info(`[Claude][${sessionId}] Plan mode: deny execution tool ${toolName}`);
+        return {
+          behavior: 'deny' as const,
+          message: `Plan Mode: executing commands or running tasks is not allowed.`,
+        };
       }
 
       const rawFilePath = typeof (input as any).file_path === 'string' ? String((input as any).file_path).trim() : '';
@@ -217,7 +215,7 @@ export function buildCanUseToolHandler(ctx: CanUseToolContext) {
         if (!rawFilePath) {
           return {
             behavior: 'deny' as const,
-            message: `Chế độ lập kế hoạch: tool ${toolName} bắt buộc có file_path trong ${projectPlansDirWithSlash}`,
+            message: `Plan Mode: tool ${toolName} requires file_path to be inside ${projectPlansDirWithSlash}`,
           };
         }
 
@@ -228,23 +226,18 @@ export function buildCanUseToolHandler(ctx: CanUseToolContext) {
         const normalizedResolvedPath = normalizePath(path.resolve(resolvedPath)).replace(/\/+/g, '/');
 
         if (!normalizedResolvedPath.startsWith(normalizedProjectPlansDir)) {
-          logger.warn(`[Claude][${sessionId}] Plan mode: chặn ghi ngoài project plans dir ${resolvedPath}`);
+          logger.warn(`[Claude][${sessionId}] Plan mode: deny write outside plans dir ${resolvedPath}`);
           return {
             behavior: 'deny' as const,
-            message: `Chế độ lập kế hoạch: chỉ được ghi kế hoạch trong ${projectPlansDirWithSlash}`,
+            message: `Plan Mode: you may only write plan files to ${projectPlansDirWithSlash}`,
           };
         }
 
         (input as any).file_path = path.resolve(resolvedPath);
-        logger.info(`[Claude][${sessionId}] Plan mode: cho phép ghi plan file ${(input as any).file_path}`);
-        return { behavior: 'allow' as const, updatedInput: input };
+        logger.info(`[Claude][${sessionId}] Plan mode: allow write to plan file ${(input as any).file_path}`);
       }
 
-      logger.info(`[Claude][${sessionId}] Plan mode: chặn tool ${toolName}`);
-      return {
-        behavior: 'deny' as const,
-        message: `Chế độ lập kế hoạch: chỉ được phân tích, đọc code và ghi kế hoạch vào ${projectPlansDirWithSlash}. Không được sửa file source hay chạy lệnh.`,
-      };
+      return { behavior: 'allow' as const, updatedInput: input };
     }
 
     if (ctx.permissionMode === 'bypassPermissions') {
@@ -286,21 +279,28 @@ export function buildSystemPromptAppend(
 
   appendParts.push(
     `[PLAN PATH ENFORCEMENT]`,
-    `Nếu bạn tạo hoặc chỉnh sửa file kế hoạch (.md), PHẢI dùng đường dẫn trong thư mục: ${projectPlansDirWithSlash}`,
-    `TUYỆT ĐỐI KHÔNG lưu vào ~/.claude/plans/ hay thư mục global khác.`,
-    `Ưu tiên tên mô tả nội dung, ví dụ: refactor-auth-module.md, fix-payment-bug.md.`,
+    `When creating or editing a plan file (.md), you MUST use the following directory: ${projectPlansDirWithSlash}`,
+    `DO NOT save to ~/.claude/plans/ or any global/shared directory.`,
+    `Use descriptive filenames, e.g.: refactor-auth-module.md, fix-payment-bug.md.`,
   );
 
   if (config.permissionMode === 'plan') {
     appendParts.push(
       `[PLAN MODE INSTRUCTIONS]`,
-      `Bạn đang ở chế độ lập kế hoạch. Các quy tắc bắt buộc:`,
-      `1. KHÔNG gọi EnterPlanMode hay ExitPlanMode. Chỉ phân tích bằng Read, Glob, Grep.`,
-      `2. Được dùng tool Agent cho sub-agent nghiên cứu. Sub-agent không được chứa EnterPlanMode/ExitPlanMode.`,
-      `3. Viết kế hoạch chi tiết dưới dạng Markdown.`,
-      `4. PHẢI lưu file kế hoạch vào thư mục: ${projectPlansDirWithSlash}`,
-      `5. KHÔNG được sửa bất kỳ file source code nào. Chỉ được TẠO/GHI file trong ${projectPlansDirWithSlash}`,
-      `6. Kế hoạch phải bao gồm: Mục tiêu, Phân tích hiện trạng, Các bước thực hiện, và Rủi ro.`,
+      `You are in Plan Mode. Goal: research + create a plan file. DO NOT execute or implement.`,
+      ``,
+      `Mandatory rules:`,
+      `- You may ONLY write plan files to: ${projectPlansDirWithSlash}`,
+      `- DO NOT modify any source code files`,
+      `- DO NOT execute commands (Bash, Monitor, etc.)`,
+      `- DO NOT call EnterPlanMode or ExitPlanMode`,
+      ``,
+      `Research guidance:`,
+      `- Select appropriate skills/agents to research the codebase (e.g.: Explore, Plan, code-review)`,
+      `- Use sequential-thinking MCP to evaluate and organize information`,
+      `- Call skills/agents for research if needed, then synthesize using sequential-thinking`,
+      `- Auto-generate a descriptive plan filename based on the content (e.g.: refactor-auth-module.md)`,
+      `- Write the plan in Markdown format: Goal, Current State Analysis, Implementation Steps, Risks, Completion Criteria`,
     );
   }
 

@@ -40,13 +40,19 @@ const AskUserPanel: React.FC<{
   }, [currentStep]);
 
   const handleSubmitAll = useCallback(() => {
-    const formattedAnswers = questions.map((q, i) => {
-      const ans = answers[i];
-      const answerText = Array.isArray(ans) ? ans.join(', ') : (ans || '');
-      return `${q.question}\n→ ${answerText}`;
-    }).join('\n\n');
+    const normalizedAnswers = questions.map((q, i) => ({
+      header: q.header || '',
+      question: q.question,
+      answer: answers[i] ?? '',
+    }));
 
-    onRespond(formattedAnswers);
+    // Giữ key "answer" top-level để tương thích parser hiện tại của AskUserQuestion.
+    const payload = {
+      answer: normalizedAnswers,
+      answers: normalizedAnswers,
+    };
+
+    onRespond(JSON.stringify(payload));
   }, [questions, answers, onRespond]);
 
   const handleTextSubmit = useCallback(() => {
@@ -60,7 +66,7 @@ const AskUserPanel: React.FC<{
         handleSubmitAll();
       }
     } else {
-      onRespond(textAnswer.trim());
+      onRespond(JSON.stringify({ answer: textAnswer.trim() }));
     }
   }, [textAnswer, isMultiQuestion, currentStep, questions.length, handleSubmitAll, onRespond]);
 
@@ -192,7 +198,7 @@ const AskUserPanel: React.FC<{
               <button
                 key={opt.label}
                 className="ask-user-option-btn"
-                onClick={() => onRespond(opt.label)}
+                onClick={() => onRespond(JSON.stringify({ answer: opt.label }))}
               >
                 <span className="ask-user-option-label">{opt.label}</span>
                 {opt.description && <span className="ask-user-option-desc">{opt.description}</span>}
@@ -211,7 +217,7 @@ const AskUserPanel: React.FC<{
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && textAnswer.trim()) {
                   e.preventDefault();
-                  onRespond(textAnswer.trim());
+                  onRespond(JSON.stringify({ answer: textAnswer.trim() }));
                   setTextAnswer('');
                 }
               }}
@@ -219,7 +225,7 @@ const AskUserPanel: React.FC<{
             <button
               className="permission-btn permission-btn-allow"
               disabled={!textAnswer.trim()}
-              onClick={() => { onRespond(textAnswer.trim()); setTextAnswer(''); }}
+              onClick={() => { onRespond(JSON.stringify({ answer: textAnswer.trim() })); setTextAnswer(''); }}
             >
               <CheckCircleOutlined /> Gửi
             </button>
