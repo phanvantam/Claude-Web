@@ -28,6 +28,7 @@ export interface SessionStartedState {
   model?: string;
   effortLevel?: string;
   permissionMode?: string;
+  currentContextTokens?: number;
   pendingPermission?: PendingPermission;
   pendingAskUser?: PendingAskUser;
   processingStartedAt?: number;
@@ -51,6 +52,7 @@ export interface SocketHandlerDeps {
   setSessionModel: Dispatch<SetStateAction<string | undefined>>;
   setSessionEffortLevelState: Dispatch<SetStateAction<string | undefined>>;
   setSessionPermissionModeState: Dispatch<SetStateAction<string | undefined>>;
+  setCurrentContextTokens: Dispatch<SetStateAction<number | undefined>>;
   setPendingPermission: Dispatch<SetStateAction<PendingPermission | null>>;
   setIsSwitchingSession: Dispatch<SetStateAction<boolean>>;
   setActiveSubAgent: Dispatch<SetStateAction<ActiveSubAgent | null>>;

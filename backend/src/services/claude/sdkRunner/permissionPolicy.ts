@@ -150,9 +150,26 @@ export function buildCanUseToolHandler(ctx: CanUseToolContext) {
     }
 
     const riskLevel = getToolRiskLevel(toolName);
-    logger.info(`[Claude][${sessionId}] canUseTool: ${toolName} (risk=${riskLevel}, mode=${ctx.permissionMode})`);
+    const currentParentToolUseId = state.currentParentToolUseId || null;
+    const currentDepth = currentParentToolUseId
+      ? (state.subAgentDepthByToolUseId?.[currentParentToolUseId] || state.activeSubAgentDepth || 1)
+      : 0;
+
+    logger.info(`[Claude][${sessionId}] canUseTool: ${toolName} (risk=${riskLevel}, mode=${ctx.permissionMode}, parent=${currentParentToolUseId || 'none'}, depth=${currentDepth})`);
     state.activeToolName = toolName;
     emitter.emit('status', { sessionId, status: 'tool_use', toolName });
+
+    if (toolName === 'Agent') {
+      if (!currentParentToolUseId) {
+        logger.info(`[Claude][${sessionId}] Agent tool from main context keeps default permission flow`);
+      } else {
+        logger.warn(`[Claude][${sessionId}] Nested Agent denied (sub-agent -> sub-agent disabled)`);
+        return {
+          behavior: 'deny' as const,
+          message: 'Nested Agent đã bị tắt: chỉ main conversation mới được gọi Agent.',
+        };
+      }
+    }
 
     const planEnforce = enforceProjectPlanPath(toolName, input, { sessionId, config });
     if (planEnforce.deniedMessage) {

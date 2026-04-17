@@ -112,6 +112,10 @@ export async function runSDKQuery(
   if (config.maxTurns) options.maxTurns = config.maxTurns;
   if (config.maxBudgetUsd) options.maxBudgetUsd = config.maxBudgetUsd;
 
+  // Init depth tracking
+  if (!state.subAgentDepthByToolUseId) state.subAgentDepthByToolUseId = {};
+  if (state.activeSubAgentDepth === undefined) state.activeSubAgentDepth = 0;
+
   // systemPrompt append: plan enforcement + mode instructions
   const projectPlansDir = path.resolve(config.cwd, '.claude', 'plans');
   const projectPlansDirWithSlash = `${projectPlansDir}/`;
@@ -286,6 +290,7 @@ export async function runSDKQuery(
 
         case 'assistant': {
           const parentToolUseId = (sdkMsg as any).parent_tool_use_id || null;
+          state.currentParentToolUseId = parentToolUseId;
           if (!parentToolUseId) {
             const apiMsg = (sdkMsg as any).message;
             if (apiMsg?.content && Array.isArray(apiMsg.content)) {
@@ -378,6 +383,9 @@ export async function runSDKQuery(
     state.abortController = undefined;
     state.queryInstance = undefined;
     state.pendingPermission = undefined;
+    state.currentParentToolUseId = undefined;
+    state.activeSubAgentDepth = 0;
+    state.subAgentDepthByToolUseId = {};
     clearPartialTurnInState();
 
     if (state.isProcessing) {
@@ -385,6 +393,9 @@ export async function runSDKQuery(
       state.isProcessing = false;
       state.activeToolName = undefined;
       state.activeSubAgent = undefined;
+      state.currentParentToolUseId = undefined;
+      state.activeSubAgentDepth = 0;
+      state.subAgentDepthByToolUseId = {};
       clearPartialTurnInState();
       emitter.emit('status', { sessionId, status: 'idle' });
 

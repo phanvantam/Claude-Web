@@ -32,6 +32,12 @@ export interface ClaudeSessionState {
     activities?: Array<{ toolName: string; inputSummary?: string; timestamp: number }>;
     currentToolName?: string;
   };
+  /** Depth sub-agent hiện tại theo execution context */
+  activeSubAgentDepth?: number;
+  /** Map tool use id -> depth để track nested Agent lifecycle chính xác */
+  subAgentDepthByToolUseId?: Record<string, number>;
+  /** parent tool use id hiện hành của assistant/tool context */
+  currentParentToolUseId?: string | null;
   /** Partial blocks của assistant turn đang chạy — để restore UI sau reload */
   partialAssistantBlocks?: ContentBlock[];
   /** Partial toolCalls của assistant turn đang chạy */
@@ -44,6 +50,8 @@ export interface ClaudeSessionState {
   abortRequestedAt?: number;
   /** Lý do interrupt gần nhất để hiển thị trạng thái dừng rõ ràng */
   interruptReason?: 'user_abort' | 'watchdog_timeout' | 'linux_completion_token' | 'unknown';
+  /** Token context hiện tại của session — lấy từ compact_boundary postTokens */
+  currentContextTokens?: number;
 }
 
 /** Config truyền vào runSDKQuery — tách riêng để dùng chung */
@@ -57,6 +65,8 @@ export interface SDKQueryConfig {
   maxTurns?: number;
   /** Giới hạn chi phí USD — SDK tự dừng và trả error_max_budget_usd */
   maxBudgetUsd?: number;
+  /** Giới hạn depth nested sub-agent (main → sub → sub = 2) */
+  maxSubAgentDepth?: number;
   customArgs?: string[];
 }
 

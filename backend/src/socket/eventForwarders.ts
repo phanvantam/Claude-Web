@@ -98,4 +98,8 @@ export function registerClaudeEventForwarders(io: Server): void {
   claudeService.on('prompt:suggestion', (data) => {
     io.to(data.sessionId).emit('prompt:suggestion', data);
   });
+
+  claudeService.on('session:contextUpdated', (data) => {
+    io.to(data.sessionId).emit('session:contextUpdated', data);
+  });
 }

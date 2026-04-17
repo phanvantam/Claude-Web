@@ -33,6 +33,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     setSessionModel,
     setSessionEffortLevelState,
     setSessionPermissionModeState,
+    setCurrentContextTokens,
     setPendingPermission,
     setIsSwitchingSession,
     setActiveSubAgent,
@@ -130,6 +131,7 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     if (data.state?.model) setSessionModel(data.state.model);
     if (data.state?.effortLevel) setSessionEffortLevelState(data.state.effortLevel);
     if (data.state?.permissionMode) setSessionPermissionModeState(data.state.permissionMode);
+    if (data.state?.currentContextTokens !== undefined) setCurrentContextTokens(data.state.currentContextTokens);
 
     // Chỉ restore AskUser khi session đang "chạy dở" (isProcessing=true).
     // Nếu wasProcessing=false → session đã kết thúc bình thường, không có AskUser nào đang chờ.
@@ -447,6 +449,11 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     setPendingAskUser(null);
   });
 
+  socket.on('session:contextUpdated', (data: { sessionId: string; tokens: number }) => {
+    if (data.sessionId !== sessionIdRef.current) return;
+    setCurrentContextTokens(data.tokens);
+  });
+
   return [
     'session:started',
     'session:compacted',
@@ -468,5 +475,6 @@ export function registerSessionHandlers(socket: Socket, deps: SocketHandlerDeps)
     'mcp:resolved',
     'askUser:question',
     'askUser:resolved',
+    'session:contextUpdated',
   ];
 }

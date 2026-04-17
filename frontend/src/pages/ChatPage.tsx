@@ -60,6 +60,7 @@ const ChatPage: React.FC = () => {
     setSessionEffortLevel,
     sessionPermissionMode,
     setSessionPermissionMode,
+    currentContextTokens,
     pendingPermission,
     respondPermission,
     activeToolName,
@@ -268,8 +269,16 @@ const ChatPage: React.FC = () => {
       if (msg.cost) cost += msg.cost;
     }
 
-    return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cost, turns, model };
-  }, [messages, config.model]);
+    return {
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cost,
+      turns,
+      model,
+      currentContextTokens,
+    };
+  }, [messages, config.model, currentContextTokens]);
 
   /** Chuyển effort level key sang nhãn tiếng Việt */
   const effortLabelMap: Record<string, string> = {

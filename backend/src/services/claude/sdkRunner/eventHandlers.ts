@@ -190,10 +190,28 @@ export function handleAssistantEvent(
         const agentName = block.input?.subagent_type || block.input?.agent_type || block.input?.type || 'Sub Agent';
         const initialPrompt = typeof block.input?.description === 'string' ? block.input.description : '';
 
+        const parentDepth = parentToolUseId
+          ? (state.subAgentDepthByToolUseId?.[parentToolUseId] || state.activeSubAgentDepth || 1)
+          : 0;
+        const nextDepth = parentDepth + 1;
+
         ctx.subAgentNames.set(tc.id, agentName);
         ctx.subAgentActivityMap.set(tc.id, []);
         ctx.subAgentLiveTextMap.set(tc.id, '');
+        state.subAgentDepthByToolUseId = {
+          ...(state.subAgentDepthByToolUseId || {}),
+          [tc.id]: nextDepth,
+        };
+        state.activeSubAgentDepth = nextDepth;
         ctx.turnBlocks.push({ type: 'tool_use', tool: tc });
+
+        // Gắn metadata depth tối thiểu để giữ đúng parent-child chain cho nested sub-agent.
+        (ctx.turnBlocks[ctx.turnBlocks.length - 1] as any).tool.depth = nextDepth;
+        if (parentToolUseId) {
+          (ctx.turnBlocks[ctx.turnBlocks.length - 1] as any).tool.parentToolUseId = parentToolUseId;
+        }
+
+        logger.info(`[Claude][${sessionId}] Sub-agent start depth=${nextDepth}, parent=${parentToolUseId || 'root'}, toolUseId=${tc.id}`);
 
         // Placeholder để dot-subagent-result xuất hiện ngay khi sub-agent bắt đầu chạy.
         // Dùng upsert để tránh tạo block trùng nếu stream_event đến sớm hơn assistant event.
@@ -304,6 +322,17 @@ export function handleResultEvent(
   const costUsd = result.total_cost_usd || 0;
   const durationMs = result.duration_ms || 0;
   const usage = result.usage;
+  const modelUsage = result.modelUsage && typeof result.modelUsage === 'object'
+    ? Object.values(result.modelUsage as Record<string, any>)
+    : [];
+  const contextWindow = modelUsage.find((item: any) => typeof item?.contextWindow === 'number')?.contextWindow;
+  if (typeof contextWindow === 'number') {
+    state.currentContextTokens = contextWindow;
+    emitter.emit('session:contextUpdated', {
+      sessionId,
+      tokens: contextWindow,
+    });
+  }
   const hasTerminalMessage = !!result.is_error || costUsd > 0 || durationMs > 1000;
 
   if (!hasTerminalMessage) {
@@ -447,6 +476,9 @@ export function handleResultEvent(
   state.partialToolCalls = undefined;
   state.partialAssistantContent = undefined;
   state.interruptReason = undefined;
+  state.currentParentToolUseId = undefined;
+  state.activeSubAgentDepth = 0;
+  state.subAgentDepthByToolUseId = {};
   emitter.emit('status', { sessionId, status: 'idle' });
 
   // Interrupt stream sau khi xong — cleanup resources (claude-agent-sdk)

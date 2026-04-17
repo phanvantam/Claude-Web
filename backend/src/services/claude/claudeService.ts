@@ -321,6 +321,7 @@ export class ClaudeService extends EventEmitter {
         model: state.model,
         effortLevel: state.effortLevel,
         permissionMode: state.permissionMode,
+        currentContextTokens: state.currentContextTokens,
         pendingPermission: state.pendingPermission ? {
           toolName: state.pendingPermission.toolName,
           input: state.pendingPermission.input,
@@ -488,6 +489,9 @@ export class ClaudeService extends EventEmitter {
     state.isProcessing = false;
     state.abortRequestedAt = undefined;
     state.interruptReason = undefined;
+    state.currentParentToolUseId = undefined;
+    state.activeSubAgentDepth = 0;
+    state.subAgentDepthByToolUseId = {};
 
     // Đảm bảo frontend luôn nhận tín hiệu dừng ngay cả khi SDK result đến chậm.
     this.emit('status', { sessionId, status: 'idle' });

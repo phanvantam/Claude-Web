@@ -16,6 +16,7 @@ export interface SessionStats {
   cost: number;
   turns: number;
   model: string;
+  currentContextTokens?: number;
 }
 
 interface StatsPopoverContentProps {
@@ -79,6 +80,14 @@ const StatsPopoverContent: React.FC<StatsPopoverContentProps> = ({
         <span style={{ fontFamily: 'monospace' }}>{permissionLabel}</span>
       </div>
       <div style={rowStyle}>
+        <span style={labelStyle}>Giới hạn context</span>
+        <span style={numStyle}>
+          {sessionStats.currentContextTokens !== undefined
+            ? sessionStats.currentContextTokens.toLocaleString('vi-VN')
+            : '—'}
+        </span>
+      </div>
+      <div style={rowStyle}>
         <span style={labelStyle}>Tokens nhận</span>
         <span style={numStyle}>{sessionStats.inputTokens.toLocaleString('vi-VN')}</span>
       </div>
@@ -87,7 +96,7 @@ const StatsPopoverContent: React.FC<StatsPopoverContentProps> = ({
         <span style={numStyle}>{sessionStats.outputTokens.toLocaleString('vi-VN')}</span>
       </div>
       <div style={rowStyle}>
-        <span style={labelStyle}>Tổng tokens</span>
+        <span style={labelStyle}>Tổng tokens tích lũy</span>
         <span style={{ fontWeight: 600, ...numStyle }}>{sessionStats.totalTokens.toLocaleString('vi-VN')}</span>
       </div>
       <div style={rowStyle}>

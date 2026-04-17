@@ -42,12 +42,23 @@ export function handleSystemEvent(ctx: SystemEventContext): void {
 
   if (subtype === 'compact_boundary') {
     const compactMeta = (sdkMsg as any).compact_metadata;
-    logger.info(`[Claude][${sessionId}] Context compacted: ${compactMeta?.pre_tokens} → ${compactMeta?.post_tokens} tokens`);
+    const postTokens = compactMeta?.post_tokens;
+    logger.info(`[Claude][${sessionId}] Context compacted: ${compactMeta?.pre_tokens} → ${postTokens} tokens`);
+
+    if (typeof postTokens === 'number') {
+      state.currentContextTokens = postTokens;
+    }
+
     emitter.emit('compact:boundary', {
       sessionId,
       trigger: compactMeta?.trigger,
       preTokens: compactMeta?.pre_tokens,
-      postTokens: compactMeta?.post_tokens,
+      postTokens,
+    });
+
+    emitter.emit('session:contextUpdated', {
+      sessionId,
+      tokens: postTokens,
     });
   } else if (subtype === 'task_started') {
     const taskId = (sdkMsg as any).task_id;

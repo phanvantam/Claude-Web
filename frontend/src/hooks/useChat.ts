@@ -75,6 +75,8 @@ interface UseChatReturn {
   sessionPermissionMode?: string;
   /** Cập nhật permission mode cho session hiện tại */
   setSessionPermissionMode: (mode?: string) => void;
+  /** Token context hiện tại của session — lấy từ compact_boundary */
+  currentContextTokens?: number;
   /** Thông tin tool đang chờ permission (null nếu không có) */
   pendingPermission: PendingPermission | null;
   /** Phản hồi permission request: true = allow, false = deny */
@@ -119,6 +121,7 @@ export function useChat(): UseChatReturn {
   const [sessionModel, setSessionModel] = useState<string | undefined>();
   const [sessionEffortLevel, setSessionEffortLevelState] = useState<string | undefined>();
   const [sessionPermissionMode, setSessionPermissionModeState] = useState<string | undefined>();
+  const [currentContextTokens, setCurrentContextTokens] = useState<number | undefined>();
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const [isSwitchingSession, setIsSwitchingSession] = useState(false);
   /** Sub-agent đang chạy — hiển indicator trong timeline */
@@ -166,6 +169,7 @@ export function useChat(): UseChatReturn {
     setSessionModel,
     setSessionEffortLevelState,
     setSessionPermissionModeState,
+    setCurrentContextTokens,
     setPendingPermission,
     setIsSwitchingSession,
     setActiveSubAgent,
@@ -198,6 +202,7 @@ export function useChat(): UseChatReturn {
     setSessionEffortLevelState(undefined);
     setSessionPermissionModeState(undefined);
     setSessionModel(undefined);
+    setCurrentContextTokens(undefined);
     setHasMoreMessages(false);
     nextCursorRef.current = null;
     // Đánh dấu phiên đang chờ kết nối — filter event từ phiên cũ
@@ -403,6 +408,7 @@ export function useChat(): UseChatReturn {
     setSessionEffortLevel,
     sessionPermissionMode,
     setSessionPermissionMode,
+    currentContextTokens,
     pendingPermission,
     respondPermission,
     pendingAskUser,

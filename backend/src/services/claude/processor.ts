@@ -160,6 +160,7 @@ export class QueryProcessor {
         b.type === 'subagent_result' && (b as any).parentToolUseId === matchId,
       );
 
+      const subAgentDepth = this.state.subAgentDepthByToolUseId?.[matchId] || 1;
       const subAgentResultBlock: ContentBlock = {
         type: 'subagent_result',
         agentName,
@@ -169,7 +170,8 @@ export class QueryProcessor {
         usage: subAgentUsage,
         agentId: subAgentId,
         parentToolUseId: matchId,
-      };
+        depth: subAgentDepth,
+      } as ContentBlock;
 
       if (existingSubAgentResultIndex >= 0) {
         ctx.turnBlocks[existingSubAgentResultIndex] = subAgentResultBlock;
@@ -187,6 +189,18 @@ export class QueryProcessor {
       }
       if (ctx.subAgentStreamEventParents) {
         ctx.subAgentStreamEventParents.delete(matchId);
+      }
+
+      // Giảm depth khi sub-agent hoàn tất
+      if (this.state.subAgentDepthByToolUseId?.[matchId] !== undefined) {
+        const completedDepth = this.state.subAgentDepthByToolUseId[matchId];
+        delete this.state.subAgentDepthByToolUseId[matchId];
+
+        // Tìm depth cao nhất còn lại trong các sub-agent đang chạy
+        const remainingDepths = Object.values(this.state.subAgentDepthByToolUseId || {});
+        this.state.activeSubAgentDepth = remainingDepths.length > 0 ? Math.max(...remainingDepths) : 0;
+
+        logger.info(`[Claude][${this.sessionId}] Sub-agent completed at depth=${completedDepth}, activeDepth now=${this.state.activeSubAgentDepth}`);
       }
       return;
     }
